@@ -50,7 +50,7 @@ model is **downloaded, not bundled** (it's large), then integrity-verified befor
 |-------|-------|
 | File | `snowflake-arctic-embed-l-v2.0-f16.gguf` |
 | Size | ~1.08 GB |
-| sha256 | `a88849f37c28790a29495d14d9ea0d391a51611daf47fa30316abf34d772a281` |
+| sha256 | `745f544edc8421b9398684282b25cc933fbc766467fc9eedba96ed12440206aa` |
 | Source | Hugging Face repo `Casual-Autopsy/snowflake-arctic-embed-l-v2.0-gguf`, pinned to an immutable revision |
 | Base model | Snowflake `snowflake-arctic-embed-l-v2.0` (base license: Apache-2.0); third-party GGUF re-quant |
 | Installed to | `<workspace>/node-llama-cpp/models/snowflake-arctic-embed-l-v2.0-f16.gguf` |

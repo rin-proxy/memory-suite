@@ -68,7 +68,7 @@ MODEL_URL="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/${MODEL_FILE
 # sha256 of ${MODEL_FILE} (verify with: sha256sum / shasum -a 256 on a trusted copy).
 # REQUIRED — step 4 aborts the install on mismatch. Never blank this: an empty pin is
 # treated as a packaging error and hard-fails (we refuse to install an unverified model).
-MODEL_SHA256="a88849f37c28790a29495d14d9ea0d391a51611daf47fa30316abf34d772a281"
+MODEL_SHA256="745f544edc8421b9398684282b25cc933fbc766467fc9eedba96ed12440206aa"
 
 NLC_VERSION="^3.18.1"   # node-llama-cpp — the native embedding runtime
 

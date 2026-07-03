@@ -1,0 +1,10 @@
+#!/bin/bash
+# Deep recall (curated memory u raw transcripts). Usage: ./mdeep "query" [k] [--src S] [--after D] [--before D]
+# Portable: resolves deep.mjs relative to this launcher (works wherever installed); honors $OPENCLAW_WORKSPACE.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -n "$OPENCLAW_WORKSPACE" ] && [ -f "$OPENCLAW_WORKSPACE/scripts/semantic/deep.mjs" ]; then
+  TARGET="$OPENCLAW_WORKSPACE/scripts/semantic/deep.mjs"
+else
+  TARGET="$SELF_DIR/deep.mjs"
+fi
+exec node "$TARGET" "$@"

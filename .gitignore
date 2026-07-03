@@ -1,0 +1,18 @@
+# ── OS / editor cruft ─────────────────────────────────────────────────────────
+.DS_Store
+*.bak
+*.bak.*
+*.tmp
+*.partial
+
+# ── Node runtime — built locally by install.sh, never committed ───────────────
+node_modules/
+
+# ── Embedding model — downloaded + sha256-verified by install.sh (~1.1GB) ─────
+# Never bundled in the repo. See PORTABILITY.md for the pinned source + hash.
+*.gguf
+
+# ── Workspace state — belongs to the user's workspace, not the bundle repo ────
+# Guards against accidentally tracking data if a workspace is created in-tree.
+memory/.semantic/*.lock
+memory/**/*.lock

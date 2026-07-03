@@ -1,0 +1,10 @@
+#!/bin/bash
+# Hybrid memory recall (semantic + keyword). Usage: ./msem "query" [k] [--type T] [--status S] [--tag G]
+# Portable: resolves hybrid.mjs relative to this launcher (works wherever installed); honors $OPENCLAW_WORKSPACE.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -n "$OPENCLAW_WORKSPACE" ] && [ -f "$OPENCLAW_WORKSPACE/scripts/semantic/hybrid.mjs" ]; then
+  TARGET="$OPENCLAW_WORKSPACE/scripts/semantic/hybrid.mjs"
+else
+  TARGET="$SELF_DIR/hybrid.mjs"
+fi
+exec node "$TARGET" "$@"

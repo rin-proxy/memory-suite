@@ -51,12 +51,41 @@ The **bundle version** (`suite.json`) moves independently of each skill's own `S
 (`cc`/`clang`/`gcc` + `make` + `python3`) to build on first install. No cloud API is used.
 Full detail, the exact model pin, and OS notes: **[`PORTABILITY.md`](./PORTABILITY.md)**.
 
+## Platforms
+
+The bundle is **dual-platform**: the *same* local engine (arctic-embed via `node-llama-cpp`; `msem` +
+`mdeep` search) runs on both **OpenClaw** and **Claude Code**, and `install.sh` targets either. Recall is
+always **local, private, and redacted before embedding** — secrets are scrubbed on the way into the index,
+and no cloud API is called on either platform.
+
+**OpenClaw** (default target):
+
+```bash
+openclaw skills install git:rin-proxy/memory-suite      # via the OpenClaw skill registry
+# — or install straight into a workspace (default: $OPENCLAW_WORKSPACE, else ~/.openclaw/workspace):
+bash install.sh [WORKSPACE]
+```
+
+**Claude Code:**
+
+```bash
+bash install.sh --target claude-code
+# Workspace defaults to ~/.claude/memory-suite (override with a positional arg or $OPENCLAW_WORKSPACE).
+# Installs the same engine + model + memory store, copies the 5 skills into ~/.claude/skills/ so
+# Claude Code discovers them, and writes convenience wrappers <ws>/msem and <ws>/mdeep.
+```
+
+Both targets share one **deep-recall** engine. `mdeep` runs the hybrid search over curated memory **plus raw
+conversation transcripts**, and it indexes **both** OpenClaw history **and** Claude Code sessions
+(`~/.claude/projects/*.jsonl`) — via `index-transcripts.mjs --cc-dir "$HOME/.claude/projects"` (or
+`--src cc`). So a detail from any past session on either platform stays recoverable; nothing said is lost.
+
 ## Usage
 
 ```bash
-# Install the whole suite into an OpenClaw workspace (5 skills + shared engine + model).
-# Workspace defaults to $OPENCLAW_WORKSPACE, else ~/.openclaw/workspace.
-bash install.sh [WORKSPACE] [--with-cron] [--skip-model] [--model-only] [--force]
+# Install the whole suite (5 skills + shared engine + model). See "Platforms" above for OpenClaw vs Claude Code.
+# Workspace defaults to $OPENCLAW_WORKSPACE, else the per-target default (~/.openclaw/workspace or ~/.claude/memory-suite).
+bash install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--skip-model] [--model-only] [--force]
 
 # Confirm it's healthy (runs the engine's 3 unit tests; warns if the model isn't present yet).
 bash check.sh [--workspace DIR]

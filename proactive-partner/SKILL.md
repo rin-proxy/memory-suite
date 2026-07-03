@@ -1,6 +1,6 @@
 ---
 name: proactive-partner
-description: Turn an OpenClaw agent into a proactive partner that surfaces high-leverage work the human didn't ask for — then proposes it with rigor. Ships a scanner that finds real opportunities (stalled work, unaddressed learnings, silently-failing crons, memory debt), grounds each proposal in total recall (mdeep), and gates anything external behind approval. Use when the agent should anticipate needs, do a proactive check-in, or "surprise me with something useful".
+description: Turn your AI agent into a proactive partner that surfaces high-leverage work the human didn't ask for — then proposes it with rigor. Ships a scanner that finds real opportunities (stalled work, unaddressed learnings, silently-failing crons, memory debt), grounds each proposal in total recall (mdeep), and gates anything external behind approval. Use when the agent should anticipate needs, do a proactive check-in, or "surprise me with something useful".
 version: 1.0.0
 metadata:
   openclaw:

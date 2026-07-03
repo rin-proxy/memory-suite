@@ -6,10 +6,15 @@
 #  memory store the skills use.
 #
 #  Usage:
-#    ./install.sh [WORKSPACE] [--with-cron] [--model-only] [--skip-model]
+#    ./install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--model-only] [--skip-model]
 #
-#    WORKSPACE     target OpenClaw workspace (default: $OPENCLAW_WORKSPACE,
-#                  else $HOME/.openclaw/workspace). May also be given as $1.
+#    WORKSPACE     target workspace (default: $OPENCLAW_WORKSPACE, else — by --target —
+#                  $HOME/.openclaw/workspace for openclaw, $HOME/.claude/memory-suite for
+#                  claude-code). May also be given as $1.
+#    --target      openclaw (default; current behavior, unchanged) OR claude-code.
+#                  claude-code also copies the 5 skills into $HOME/.claude/skills/ (so
+#                  Claude Code discovers them) and writes $WORKSPACE/{msem,mdeep} wrappers.
+#                  Same engine (semantic stack, node-llama-cpp, model, memory store) either way.
 #    --with-cron   ALSO install daily reindex crons in your LOCAL timezone
 #                  (OFF by default — nothing is scheduled unless you pass this).
 #    --skip-model  do everything except download the embedding model.
@@ -35,20 +40,36 @@ WITH_CRON=false
 SKIP_MODEL=false
 MODEL_ONLY=false
 FORCE=false          # refresh installed skill code even when it already exists (update path)
+TARGET="openclaw"    # openclaw (default, unchanged behavior) | claude-code
 WS_ARG=""
-for arg in "$@"; do
-  case "$arg" in
+# while+shift (bash 3.2-safe) so --target can take a following value: --target claude-code
+while [ $# -gt 0 ]; do
+  case "$1" in
     --with-cron)  WITH_CRON=true ;;
     --skip-model) SKIP_MODEL=true ;;
     --model-only) MODEL_ONLY=true ;;
     --force)      FORCE=true ;;
-    --*) echo "Unknown flag: $arg" >&2; exit 2 ;;
-    *)   WS_ARG="$arg" ;;
+    --target)     shift; TARGET="${1:-}"; [ -n "$TARGET" ] || { echo "--target requires a value (openclaw|claude-code)" >&2; exit 2; } ;;
+    --target=*)   TARGET="${1#*=}" ;;
+    --*) echo "Unknown flag: $1" >&2; exit 2 ;;
+    *)   WS_ARG="$1" ;;
   esac
+  shift
 done
 
-# Workspace precedence: positional arg > $OPENCLAW_WORKSPACE > $HOME/.openclaw/workspace
-WORKSPACE="${WS_ARG:-${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}}"
+case "$TARGET" in
+  openclaw|claude-code) ;;
+  *) echo "invalid --target '$TARGET' (expected: openclaw | claude-code)" >&2; exit 2 ;;
+esac
+
+# Workspace precedence: positional arg > $OPENCLAW_WORKSPACE > per-target default.
+# claude-code lives under ~/.claude so it sits alongside the skills CC discovers.
+if [ "$TARGET" = "claude-code" ]; then
+  DEFAULT_WS="$HOME/.claude/memory-suite"
+else
+  DEFAULT_WS="$HOME/.openclaw/workspace"
+fi
+WORKSPACE="${WS_ARG:-${OPENCLAW_WORKSPACE:-$DEFAULT_WS}}"
 
 # --- Bundle metadata: suite.json is the SINGLE source of truth for the version + the
 #     skill list this installer lays down. Parsed with sed so no jq/node dependency.
@@ -104,6 +125,7 @@ check_build_toolchain() {
 }
 
 say "🧠 Memory Suite installer  (bundle v$SUITE_VERSION)"
+say "   target    : $TARGET$([ "$TARGET" = claude-code ] && echo '  (skills → ~/.claude/skills/ · wrappers → $WORKSPACE/{msem,mdeep})')"
 say "   workspace : $WORKSPACE"
 say "   skills    : $(printf '%s ' $SUITE_SKILLS)"
 say "   model     : $MODEL_FILE  (downloaded, ~1.1GB — not bundled)"
@@ -174,13 +196,19 @@ if [ "$MODEL_ONLY" = false ]; then
   say ""
 
   # -------------------------------------------------------------------------
-  # 2b. Install the five skills (code) → $WORKSPACE/skills/<name>/
+  # 2b. Install the five skills (code) → skills dir/<name>/
   #     Skill dirs are pure code (SKILL.md + references + scripts) — no user data
   #     lives inside them (that's in $WORKSPACE/memory/). Absent → installed;
   #     present → left as-is unless --force refreshes the code (the update path).
+  #     openclaw    → $WORKSPACE/skills/    (the OpenClaw skill location)
+  #     claude-code → $HOME/.claude/skills/ (where Claude Code auto-discovers skills)
   # -------------------------------------------------------------------------
-  say "2b) Installing the five skills → $WORKSPACE/skills/"
-  SKILLS_DEST="$WORKSPACE/skills"
+  if [ "$TARGET" = "claude-code" ]; then
+    SKILLS_DEST="$HOME/.claude/skills"
+  else
+    SKILLS_DEST="$WORKSPACE/skills"
+  fi
+  say "2b) Installing the five skills → $SKILLS_DEST/"
   mkdir -p "$SKILLS_DEST"
   n_total=0; n_written=0
   for s in $SUITE_SKILLS; do
@@ -200,6 +228,25 @@ if [ "$MODEL_ONLY" = false ]; then
   done
   info "skills ready in $SKILLS_DEST ($n_total total; $n_written written this run)"
   say ""
+
+  # -------------------------------------------------------------------------
+  # 2c. Claude Code convenience wrappers → $WORKSPACE/{msem,mdeep}
+  #     Top-level launchers with this workspace baked in, so recall works from
+  #     anywhere without exporting $OPENCLAW_WORKSPACE. Regenerated every run.
+  # -------------------------------------------------------------------------
+  if [ "$TARGET" = "claude-code" ]; then
+    say "2c) Writing Claude Code convenience wrappers → $WORKSPACE/{msem,mdeep}"
+    for w in msem mdeep; do
+      cat > "$WORKSPACE/$w" <<WRAP
+#!/usr/bin/env bash
+# Memory Suite — $w wrapper (Claude Code). Workspace baked in so recall works from anywhere.
+exec env OPENCLAW_WORKSPACE="$WORKSPACE" "$WORKSPACE/scripts/semantic/$w" "\$@"
+WRAP
+      chmod +x "$WORKSPACE/$w" 2>/dev/null || true
+    done
+    info "wrote msem + mdeep wrappers (exec env OPENCLAW_WORKSPACE=<ws> <ws>/scripts/semantic/{msem,mdeep})"
+    say ""
+  fi
 
   # -------------------------------------------------------------------------
   # 3. node-llama-cpp runtime → $WORKSPACE/node-llama-cpp/  (RELATIVE symlink)
@@ -361,16 +408,33 @@ say ""
 say "Verify the install any time:   bash \"$HERE/check.sh\" --workspace \"$WORKSPACE\""
 say "Update later (refresh code):   bash \"$HERE/update.sh\" \"$WORKSPACE\""
 say ""
-say "FINAL STEP — build the initial semantic index yourself (this is the heavy part;"
-say "the installer deliberately does NOT run it):"
-say ""
-say "    cd \"$WORKSPACE/scripts/semantic\""
-say "    OPENCLAW_WORKSPACE=\"$WORKSPACE\" node index.mjs"
-say ""
-say "Then try recall:"
-say "    \"$WORKSPACE/scripts/semantic/msem\" \"something you remember\" 8"
-say ""
-say "Optional — backfill raw transcripts for total-recall (mdeep), off-peak:"
-say "    cd \"$WORKSPACE/scripts/semantic\" && node index-transcripts.mjs --backfill --src all"
+if [ "$TARGET" = "claude-code" ]; then
+  say "Target: Claude Code."
+  say "   skills discovered at : $HOME/.claude/skills/<name>/"
+  say "   engine + memory store: $WORKSPACE"
+  say ""
+  say "FINAL STEP — build the initial semantic index yourself over the Claude Code corpus"
+  say "(this is the heavy part; the installer deliberately does NOT run it):"
+  say ""
+  say "    cd \"$WORKSPACE/scripts/semantic\""
+  say "    OPENCLAW_WORKSPACE=\"$WORKSPACE\" node index.mjs                                    # curated memory"
+  say "    OPENCLAW_WORKSPACE=\"$WORKSPACE\" node index-transcripts.mjs --cc-dir \"$HOME/.claude/projects\" --incremental   # CC transcripts (~/.claude/projects/*.jsonl)"
+  say ""
+  say "Then recall via the convenience wrappers (workspace baked in — run from anywhere):"
+  say "    \"$WORKSPACE/msem\"  \"something you remember\" 8      # hybrid recall over curated memory"
+  say "    \"$WORKSPACE/mdeep\" \"that thing we discussed\" 8     # total recall, incl. CC transcripts"
+else
+  say "FINAL STEP — build the initial semantic index yourself (this is the heavy part;"
+  say "the installer deliberately does NOT run it):"
+  say ""
+  say "    cd \"$WORKSPACE/scripts/semantic\""
+  say "    OPENCLAW_WORKSPACE=\"$WORKSPACE\" node index.mjs"
+  say ""
+  say "Then try recall:"
+  say "    \"$WORKSPACE/scripts/semantic/msem\" \"something you remember\" 8"
+  say ""
+  say "Optional — backfill raw transcripts for total-recall (mdeep), off-peak:"
+  say "    cd \"$WORKSPACE/scripts/semantic\" && node index-transcripts.mjs --backfill --src all"
+fi
 say ""
 say "Memory store + skills layout reference: cognitive-memory/SKILL.md · PORTABILITY.md"

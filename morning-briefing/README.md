@@ -1,6 +1,6 @@
 # ☀️ morning-briefing
 
-A short, **memory-powered** morning briefing for an OpenClaw agent — focus, open loops, where you left off, recently-learned, system health, and today's schedule, in under 2 minutes.
+A short, **memory-powered** morning briefing for your AI agent — focus, open loops, where you left off, recently-learned, system health, and today's schedule, in under 2 minutes.
 
 ## What makes it different
 Generic briefing skills dump a to-do list. This one taps the agent's **own memory stack** — it runs total-recall (`mdeep`) to surface a relevant past detail the human may have forgotten, and reports its **own** health. That's the part a generic briefing can't do.

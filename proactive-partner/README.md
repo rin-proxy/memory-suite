@@ -1,6 +1,6 @@
 # 🔭 proactive-partner
 
-Turn an OpenClaw agent into a proactive partner that surfaces high-leverage work the human didn't ask for — **operationally**, not as vibes.
+Turn your AI agent into a proactive partner that surfaces high-leverage work the human didn't ask for — **operationally**, not as vibes.
 
 ## What makes it more than a "be proactive" prompt
 - **It scans.** `proactive-scan.sh` finds real opportunities from the workspace + memory: unaddressed learnings, stalled work, **silently-failing crons**, memory debt.

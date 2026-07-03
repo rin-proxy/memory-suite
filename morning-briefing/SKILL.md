@@ -1,6 +1,6 @@
 ---
 name: morning-briefing
-description: Generate a short, memory-powered morning briefing for an OpenClaw agent — focus, open loops, what we left off, recently-learned, system health, and today's schedule. Use it at the start of a session, when the human says "catch me up", or as a daily cron. Unlike generic briefings it taps the agent's own memory stack (total recall) to surface details the human may have forgotten.
+description: Generate a short, memory-powered morning briefing for your AI agent — focus, open loops, what we left off, recently-learned, system health, and today's schedule. Use it at the start of a session, when the human says "catch me up", or as a daily cron. Unlike generic briefings it taps the agent's own memory stack (total recall) to surface details the human may have forgotten.
 version: 1.1.0
 metadata:
   openclaw:

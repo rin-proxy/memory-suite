@@ -3,6 +3,28 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.2.0 (2026-07-03)
+
+Genuinely dual-platform (OpenClaw **and** Claude Code), platform-neutral skill descriptions, and cruft removal.
+
+- **feat:** `install.sh` gains `--target <openclaw|claude-code>` (default `openclaw`, unchanged).
+  With `--target claude-code` the workspace defaults to `$HOME/.claude/memory-suite`, the **same**
+  engine is installed (semantic stack → `<ws>/scripts/semantic/`, node-llama-cpp runtime,
+  model download+verify, memory store skeleton), the 5 skills are copied into `$HOME/.claude/skills/`
+  so Claude Code discovers them, and two convenience wrappers `<ws>/{msem,mdeep}` are written
+  (they `exec env OPENCLAW_WORKSPACE=<ws> <ws>/scripts/semantic/{msem,mdeep}`). The final step prints
+  the Claude-Code index commands — `node index.mjs` (curated) and
+  `node index-transcripts.mjs --cc-dir "$HOME/.claude/projects" --incremental` (transcripts).
+- **docs:** README gains a **Platforms** section documenting both install paths; notes that `mdeep`
+  deep-recall indexes **both** OpenClaw and Claude Code (`~/.claude/projects/*.jsonl`) transcripts via
+  `--cc-dir`/`--src cc`, all local + private + redacted-before-embedding.
+- **chore:** de-branded the skill descriptions so they read right on both platforms — "for an
+  OpenClaw agent" / "Turn an OpenClaw agent into" → "for your AI agent" / "Turn your AI agent into"
+  (morning-briefing, proactive-partner). Genuinely OpenClaw-specific technical references untouched.
+- **chore:** removed stale upgrade cruft that targeted the old `memory/meta` layout —
+  `cognitive-memory/{UPGRADE.md, UPGRADE-1.0.7.md, upgrade_to_1.0.7.sh,
+  scripts/upgrade_to_1.0.6.sh, scripts/upgrade_to_1.0.7.sh}`.
+
 ## 1.1.0 (2026-07-03)
 
 Claude Code support + install-correctness fixes (surfaced while installing the bundle on macOS / Claude Code).

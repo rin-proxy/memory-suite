@@ -4,6 +4,7 @@
 import { INDEX_PATH, QUERY_PREFIX, embed, cosine, dispose, fs } from "./common.mjs";
 import { loadDecayScores, decayFactor, recordAccess } from "./decay.mjs";
 import { rerankStage, disposeRerank } from "./rerank.mjs";
+import { openVecStore, isVecStoreEnabled, vecStoreMode, vecDbPath, vecPoolSize } from "./vecstore.mjs";
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -16,22 +17,56 @@ for (let i = 0; i < argv.length; i++) {
 const query = pos[0];
 const k = parseInt(pos[1] || "8", 10);
 if (!query) { console.error('Usage: msem "query" [k] [--type T] [--status S] [--tag G]'); process.exit(1); }
-if (!fs.existsSync(INDEX_PATH)) { console.error("❌ No index. Run: node index.mjs"); process.exit(1); }
-
-const index = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"));
-const chunks = [];
-for (const [rel, entry] of Object.entries(index.files)) {
-  const meta = entry.meta || { type: "note", status: "active", tags: [] };
-  if (flags.type && meta.type !== flags.type) continue;
-  if (flags.status && meta.status !== flags.status) continue;
-  if (flags.tag && !(meta.tags || []).includes(flags.tag)) continue;
-  for (const c of entry.chunks) chunks.push({ rel, startLine: c.startLine, text: c.text, vector: c.vector, type: meta.type });
-}
 const filterDesc = ["type", "status", "tag"].filter((f) => flags[f]).map((f) => `${f}=${flags[f]}`).join(" ");
-if (chunks.length === 0) { console.log(`❌ No chunks match filters (${filterDesc}).`); process.exit(0); }
 
-// semantic
-const qv = await embed(QUERY_PREFIX + query);
+// ── semantic candidate source ────────────────────────────────────────────────────────────────────────
+// DEFAULT: full index.json scan + JS cosine over every chunk (the `if (!viaVec)` block below — UNCHANGED).
+// OPT-IN: when sqlite-vec is enabled (VECSTORE=sqlite / auto above the chunk threshold) AND the derived db
+// + its native deps are present, fetch the semantic candidate set from the db instead (no whole-JSON load,
+// no JS cosine over every chunk). ANY miss — opted-out, deps absent, db missing, dim mismatch, error, or an
+// empty result — leaves viaVec=false and the JSON path runs EXACTLY as before. Only this FETCH changes; the
+// keyword + RRF + decay + rerank stages downstream are byte-for-byte identical for either backend.
+let chunks = null, qv = null, viaVec = false;
+if (vecStoreMode(process.env) !== "off") {
+  const store = await openVecStore(vecDbPath(process.env));
+  if (store) {
+    try {
+      if (isVecStoreEnabled(store.chunkCount, process.env)) {
+        qv = await embed(QUERY_PREFIX + query);
+        if (qv.length === store.dim) {
+          const cands = store.topK(qv, vecPoolSize(k, process.env), { type: flags.type, status: flags.status, tag: flags.tag });
+          if (cands && cands.length) {
+            // Reconstruct the index.json chunk order (by ord) so RRF/decay tie-breaks match the JSON path.
+            // vec candidates carry their stored vector (bit-identical to index.json's) so semScore below is
+            // computed by the SAME f64 cosine() as the JSON path ⇒ identical ranking, not sqlite's f32 distance.
+            cands.sort((x, y) => x.ord - y.ord);
+            chunks = cands.map((c) => ({ rel: c.path, startLine: c.startLine, text: c.text, vector: c.vector, type: c.meta.type }));
+            viaVec = true;
+          }
+        }
+      }
+    } catch { viaVec = false; } // never let the accelerator break search — fall through to JSON
+    store.close();
+  }
+}
+
+if (!viaVec) {
+  if (!fs.existsSync(INDEX_PATH)) { console.error("❌ No index. Run: node index.mjs"); process.exit(1); }
+  const index = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"));
+  chunks = [];
+  for (const [rel, entry] of Object.entries(index.files)) {
+    const meta = entry.meta || { type: "note", status: "active", tags: [] };
+    if (flags.type && meta.type !== flags.type) continue;
+    if (flags.status && meta.status !== flags.status) continue;
+    if (flags.tag && !(meta.tags || []).includes(flags.tag)) continue;
+    for (const c of entry.chunks) chunks.push({ rel, startLine: c.startLine, text: c.text, vector: c.vector, type: meta.type });
+  }
+  if (chunks.length === 0) { console.log(`❌ No chunks match filters (${filterDesc}).`); process.exit(0); }
+  if (qv === null) qv = await embed(QUERY_PREFIX + query); // reuse qv if a vec attempt already embedded it
+}
+
+// semantic — one shared line for BOTH backends (JSON scan or vec pool). Byte-for-byte identical to the
+// original when viaVec is false; identical ranking when viaVec is true (same vectors, same cosine()).
 await dispose();
 const semScore = chunks.map((c) => cosine(qv, c.vector));
 

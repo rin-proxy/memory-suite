@@ -92,6 +92,47 @@ pin is set in `install.sh`; with a blank pin the installer downloads but prints 
 packager who wants enforced integrity should pin an immutable HF revision **and** the sha256. You can
 also skip the installer entirely and just drop a reranker GGUF into the models dir yourself.
 
+## The OPTIONAL sqlite-vec vector store (off by default)
+
+Retrieval can ALSO opt into a **sqlite-vec** vector store — a derived, on-disk KNN index that accelerates
+the semantic-candidate fetch for **large** corpora (skips the load-whole-`index.json` + `O(n)` JS cosine
+scan; see `_semantic-stack/vecstore.mjs`). It is **off by default and not installed by default**: default
+recall (`msem`/`mdeep`) loads the JSON index and is **byte-for-byte unchanged** without it. It is a
+**query-time read accelerator with IDENTICAL recall** — `index.json` stays the source of truth, the db is
+built *from* it, and only the semantic-candidate *fetch* changes backend (keyword + RRF + decay + rerank are
+unchanged, and candidates are re-scored with the same `cosine()` in the same order ⇒ identical ranking).
+
+| Field | Value |
+|-------|-------|
+| Deps | **`better-sqlite3`** (native sqlite driver — compiles an addon, same toolchain as node-llama-cpp) + **`sqlite-vec`** (a loadable SQLite extension shipped as an npm package, loaded via better-sqlite3's `loadExtension`) |
+| Verified with | better-sqlite3 **12.11.1**, sqlite-vec **0.1.9** (pins in `install.sh`: `^12.4.1` / `^0.1.9`) |
+| Platform binaries | sqlite-vec ships prebuilt per-platform packages (e.g. `sqlite-vec-darwin-arm64`); better-sqlite3 fetches a prebuilt binary when available, else compiles via the toolchain below |
+| Installed to | the runtime `node_modules` (`<workspace>/node-llama-cpp/node_modules`, which `scripts/semantic/node_modules` already links to) |
+| Derived db | `<workspace>/memory/.semantic/vec.sqlite` (override with `VECSTORE_DB`) |
+| Enable at query time | `VECSTORE=sqlite msem "…"` — or auto once the corpus has ≥ `VECSTORE_THRESHOLD` chunks (default `8000`) |
+| Force JSON | `VECSTORE=json` (or `off`/`0`) |
+
+### Toolchain
+
+`better-sqlite3` compiles a **native C++ addon**, so `--with-sqlite-vec` reuses the **same toolchain
+preflight** as the embedding runtime (a C/C++ compiler + `make` + `python3` — see "Native build toolchain"
+above). On platforms where a prebuilt better-sqlite3 binary is available, no compile happens. `sqlite-vec`
+itself is a prebuilt loadable extension (no compile). The stack loads both **dynamically**, only when the
+store is actually used — so a box without them (the default) imports the engine fine and just uses JSON.
+
+### How it's installed + built
+
+```bash
+bash install.sh --with-sqlite-vec                 # adds better-sqlite3 + sqlite-vec to the runtime
+node vecstore.mjs --build --ws "<workspace>"       # build the derived KNN db from index.json…
+node vecstore.mjs --build --ws "<workspace>" --incremental   # …or incrementally (upsert by file mtime)
+```
+
+Rebuild (or `--incremental`) whenever you rebuild `index.json`. **Fallback is total**: if the deps are
+absent, the db is missing/stale, the vector dimension mismatches, or anything throws, the engine silently
+falls back to the JSON path — the accelerator can never break a search. Uninstalling the runtime
+(`uninstall.sh --purge-runtime`) removes the deps with it; the derived `vec.sqlite` is cheap to rebuild.
+
 ## macOS/BSD shims (what was made portable)
 
 | Concern | GNU / Linux | Portable handling |

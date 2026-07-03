@@ -16,6 +16,9 @@ node_modules/
 # Guards against accidentally tracking data if a workspace is created in-tree.
 memory/.semantic/*.lock
 memory/**/*.lock
+# Derived sqlite-vec accelerator (built from index.json by vecstore.mjs; never committed).
+memory/.semantic/*.sqlite
+memory/.semantic/*.sqlite-*
 
 # generated eval reports (overwritten each run)
 _semantic-stack/eval/reports/

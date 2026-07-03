@@ -3,6 +3,19 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.5.0 (2026-07-03)
+
+Optional sqlite-vec vector backend — a query-time scaling upgrade for large corpora, off by default, identical recall.
+
+- **feat:** `vecstore.mjs` — an OPT-IN sqlite-vec KNN backend that replaces the "load entire `index.json` + O(n) cosine
+  scan" semantic-candidate fetch with a native on-disk KNN scan, for large stores. Enable with `VECSTORE=sqlite` or auto
+  at ≥ `VECSTORE_THRESHOLD` (8000) chunks; install deps with `install.sh --with-sqlite-vec` (better-sqlite3 + sqlite-vec,
+  optional/not-by-default). Derived FROM `index.json` (JSON stays the source of truth; the write path is unchanged);
+  build via `node vecstore.mjs --build`. New `test-vecstore.mjs`.
+- **Backward-compat (proven byte-for-byte):** with VECSTORE unset/off — or the deps/db absent — retrieval is IDENTICAL to
+  today (diffed pre-edit vs edited hybrid/deep across 11 cases). And `VECSTORE=sqlite` yields byte-identical ranked output
+  to JSON (same sem/kw/decay/rrf) → recall@k unchanged. It's purely a faster/lighter fetch, not a quality change.
+
 ## 1.4.0 (2026-07-03)
 
 Cross-domain CONNECT (entity/link layer), a retrieval eval harness, and the reranker model pinned.

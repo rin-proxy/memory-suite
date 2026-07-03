@@ -6,7 +6,7 @@
 #  memory store the skills use.
 #
 #  Usage:
-#    ./install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--model-only] [--skip-model]
+#    ./install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--with-sqlite-vec] [--model-only] [--skip-model]
 #
 #    WORKSPACE     target workspace (default: $OPENCLAW_WORKSPACE, else — by --target —
 #                  $HOME/.openclaw/workspace for openclaw, $HOME/.claude/memory-suite for
@@ -21,6 +21,12 @@
 #                  the off-by-default precision rerank stage (rerank.mjs). Default recall never
 #                  needs it; without it the reranker simply stays disabled. Enable at query time
 #                  with RERANK=1 (or the --rerank flag). OFF by default.
+#    --with-sqlite-vec  ALSO install the OPTIONAL sqlite-vec vector store (better-sqlite3 + sqlite-vec)
+#                  into the runtime — a fast on-disk KNN index that accelerates semantic recall for
+#                  LARGE corpora by skipping the load-whole-JSON + O(n) cosine scan (vecstore.mjs).
+#                  OFF by default; default recall uses the JSON index and is byte-for-byte unchanged.
+#                  After install, build the derived db (node vecstore.mjs --build) and enable at query
+#                  time with VECSTORE=sqlite (or auto above VECSTORE_THRESHOLD chunks). See PORTABILITY.md.
 #    --skip-model  do everything except download the embedding model.
 #    --model-only  only fetch + verify the model, then exit.
 #
@@ -42,6 +48,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 WITH_CRON=false
 WITH_RERANKER=false  # opt-in: also fetch the OPTIONAL cross-encoder reranker model (off by default)
+WITH_SQLITE_VEC=false # opt-in: also install the OPTIONAL sqlite-vec vector store (off by default)
 SKIP_MODEL=false
 MODEL_ONLY=false
 FORCE=false          # refresh installed skill code even when it already exists (update path)
@@ -52,6 +59,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --with-cron)  WITH_CRON=true ;;
     --with-reranker) WITH_RERANKER=true ;;
+    --with-sqlite-vec) WITH_SQLITE_VEC=true ;;
     --skip-model) SKIP_MODEL=true ;;
     --model-only) MODEL_ONLY=true ;;
     --force)      FORCE=true ;;
@@ -110,6 +118,13 @@ RERANKER_SHA256="a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d
 
 NLC_VERSION="^3.18.1"   # node-llama-cpp — the native embedding + reranking runtime
 
+# --- OPTIONAL sqlite-vec vector store (only with --with-sqlite-vec; see vecstore.mjs / PORTABILITY.md). ---
+# A derived on-disk KNN accelerator for large corpora. OFF by default; default recall uses the JSON index.
+# better-sqlite3 compiles a native addon (reuses the same toolchain preflight); sqlite-vec is a loadable
+# extension shipped as an npm package and loaded via better-sqlite3's loadExtension().
+BETTER_SQLITE3_VERSION="^12.4.1"  # native sqlite driver (verified with 12.11.1)
+SQLITE_VEC_VERSION="^0.1.9"       # sqlite-vec loadable extension (verified with 0.1.9)
+
 say()  { printf '%s\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
 warn() { printf '  ⚠️  %s\n' "$*" >&2; }
@@ -148,6 +163,7 @@ say "   skills    : $(printf '%s ' $SUITE_SKILLS)"
 say "   model     : $MODEL_FILE  (downloaded, ~1.1GB — not bundled)"
 say "   cron      : $([ "$WITH_CRON" = true ] && echo 'will install (local TZ)' || echo 'skipped (pass --with-cron to enable)')"
 say "   reranker  : $([ "$WITH_RERANKER" = true ] && echo 'will download (optional cross-encoder, ~600MB)' || echo 'skipped (off by default; pass --with-reranker)')"
+say "   sqlite-vec: $([ "$WITH_SQLITE_VEC" = true ] && echo 'will install (optional vector store: better-sqlite3 + sqlite-vec)' || echo 'skipped (off by default; pass --with-sqlite-vec)')"
 say ""
 
 # ---------------------------------------------------------------------------
@@ -306,6 +322,28 @@ JSON
     info "scripts/semantic/node_modules already exists — leaving as-is"
   fi
   say ""
+
+  # -------------------------------------------------------------------------
+  # 3b. OPTIONAL sqlite-vec vector store (only with --with-sqlite-vec)
+  #     A DERIVED on-disk KNN accelerator for large corpora (vecstore.mjs). OFF by default; default
+  #     recall uses the JSON index and is byte-for-byte unchanged. Installed into the SAME runtime
+  #     node_modules the stack already resolves via scripts/semantic/node_modules.
+  # -------------------------------------------------------------------------
+  if [ "$WITH_SQLITE_VEC" = true ]; then
+    say "3b) Installing OPTIONAL sqlite-vec vector store → $NLC_DIR/ (better-sqlite3 + sqlite-vec)"
+    if [ -d "$NLC_DIR/node_modules/better-sqlite3" ] && [ -d "$NLC_DIR/node_modules/sqlite-vec" ]; then
+      info "better-sqlite3 + sqlite-vec already present — skipping npm install"
+    else
+      check_build_toolchain   # better-sqlite3 compiles a native addon — reuse the same toolchain preflight
+      info "running: npm install better-sqlite3@${BETTER_SQLITE3_VERSION} sqlite-vec@${SQLITE_VEC_VERSION}"
+      info "  (better-sqlite3 builds a native addon; may take a minute)"
+      ( cd "$NLC_DIR" && npm install --no-audit --no-fund "better-sqlite3@${BETTER_SQLITE3_VERSION}" "sqlite-vec@${SQLITE_VEC_VERSION}" )
+    fi
+    info "sqlite-vec store ready — it stays OPT-IN and default recall is unchanged. To use it:"
+    info "    node \"$DEST/vecstore.mjs\" --build --ws \"$WORKSPACE\"     # build the derived KNN index from index.json"
+    info "    VECSTORE=sqlite \"$DEST/msem\" \"your query\"              # or auto above VECSTORE_THRESHOLD (~8000) chunks"
+    say ""
+  fi
 fi
 
 # ---------------------------------------------------------------------------

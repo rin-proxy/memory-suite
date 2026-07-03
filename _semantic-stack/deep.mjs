@@ -3,6 +3,7 @@
 import { WS, INDEX_PATH, QUERY_PREFIX, embed, cosine, dispose, fs, path } from "./common.mjs";
 import { loadDecayScores, decayFactor, recordAccess } from "./decay.mjs";
 import { rerankStage, disposeRerank } from "./rerank.mjs";
+import { openVecStore, isVecStoreEnabled, vecStoreMode, vecDbPath, vecPoolSize } from "./vecstore.mjs";
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
@@ -12,8 +13,36 @@ const k = parseInt(pos[1] || "8", 10);
 if (!query) { console.error('Usage: mdeep "query" [k] [--src S] [--after YYYY-MM-DD] [--before YYYY-MM-DD]'); process.exit(1); }
 
 const chunks = [];
-// curated index (unchanged store)
-if (fs.existsSync(INDEX_PATH)) {
+let qv = null, curatedViaVec = false;
+// curated index — DEFAULT: full index.json scan (the `if (!curatedViaVec …)` block below, UNCHANGED).
+// OPT-IN: when sqlite-vec is enabled AND its derived db + native deps are present, fetch the curated
+// semantic candidate set from the db (no whole-JSON load / no JS cosine over every curated chunk). The
+// transcript shards are ALWAYS scanned as before; only the CURATED semantic fetch can swap backend. Any
+// miss ⇒ curatedViaVec=false ⇒ the JSON scan runs exactly as today. deep's --src/--after/--before filter
+// TRANSCRIPTS, not curated, so the curated topK takes no metadata filter.
+if (vecStoreMode(process.env) !== "off") {
+  const store = await openVecStore(vecDbPath(process.env));
+  if (store) {
+    try {
+      if (isVecStoreEnabled(store.chunkCount, process.env)) {
+        qv = await embed(QUERY_PREFIX + query);
+        if (qv.length === store.dim) {
+          const cands = store.topK(qv, vecPoolSize(k, process.env), {});
+          if (cands && cands.length) {
+            // Reconstruct index.json chunk order (by ord) so curated tie-breaks match the JSON path; carry the
+            // stored vector (bit-identical to index.json's) so sem below is the SAME f64 cosine.
+            cands.sort((x, y) => x.ord - y.ord);
+            for (const c of cands)
+              chunks.push({ source: `mem:${c.meta.type || "note"}`, rel: c.path, ref: `${c.path}:${c.startLine}`, text: c.text, vector: c.vector, ts: c.meta.date || "" });
+            curatedViaVec = true;
+          }
+        }
+      }
+    } catch { curatedViaVec = false; } // never let the accelerator break recall — fall through to JSON
+    store.close();
+  }
+}
+if (!curatedViaVec && fs.existsSync(INDEX_PATH)) {
   const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"));
   for (const [rel, e] of Object.entries(idx.files))
     for (const c of e.chunks) chunks.push({ source: `mem:${(e.meta && e.meta.type) || "note"}`, rel, ref: `${rel}:${c.startLine}`, text: c.text, vector: c.vector, ts: (e.meta && e.meta.date) || "" });
@@ -36,7 +65,10 @@ if (fs.existsSync(TDIR)) {
 }
 if (!chunks.length) { console.error("❌ no chunks indexed yet."); process.exit(1); }
 
-const qv = await embed(QUERY_PREFIX + query); await dispose();
+if (qv === null) qv = await embed(QUERY_PREFIX + query); // reuse qv if the vec attempt already embedded it
+await dispose();
+// Every chunk (JSON curated OR vec curated OR transcript) carries a vector, so sem is the SAME f64 cosine
+// as before — identical to the original line. vec curated chunks store bit-identical vectors ⇒ same ranking.
 const sem = chunks.map((c) => cosine(qv, c.vector));
 const STOP = new Set("the and for with that this from dari dan yang untuk atau ke di ada itu aku kamu apa".split(/\s+/));
 const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));

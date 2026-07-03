@@ -7,8 +7,9 @@
 #    • suite.json present with a semver version
 #    • all 5 skills have a SKILL.md
 #    • the shared _semantic-stack scripts are present
-#    • the 3 pure unit tests pass  (transcripts / decay / surface —
-#      no model, no network, no node_modules required)
+#    • the pure unit tests pass  (transcripts / decay / surface / rerank / vecstore —
+#      no model, no network, no node_modules required; vecstore's real
+#      sqlite-vec round-trip self-skips unless the opt-in deps are installed)
 #
 #  SOFT checks (warn only, never fail):
 #    • embedding model present in the workspace runtime
@@ -63,13 +64,13 @@ done
 
 # ── 2) shared semantic stack: key scripts present ─────────────────────────────
 for f in index.mjs index-transcripts.mjs hybrid.mjs deep.mjs store.mjs common.mjs \
-         decay.mjs rerank.mjs surface.mjs transcripts.mjs redact.mjs msem mdeep; do
+         decay.mjs rerank.mjs vecstore.mjs surface.mjs transcripts.mjs redact.mjs msem mdeep; do
   if [ -e "$STACK/$f" ]; then pass "stack: _semantic-stack/$f"; else fail "stack: missing _semantic-stack/$f"; fi
 done
 
 # ── 3) run the pure unit tests (no model / no network / no node_modules) ──────
 if command -v node >/dev/null 2>&1; then
-  for t in test-transcripts test-decay test-surface test-rerank; do
+  for t in test-transcripts test-decay test-surface test-rerank test-vecstore; do
     if [ ! -f "$STACK/$t.mjs" ]; then fail "unit tests: $t.mjs missing"; continue; fi
     out="$( cd "$STACK" && node "$t.mjs" 2>&1 )"; rc=$?
     if [ "$rc" -eq 0 ]; then

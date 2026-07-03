@@ -85,7 +85,7 @@ conversation transcripts**, and it indexes **both** OpenClaw history **and** Cla
 ```bash
 # Install the whole suite (5 skills + shared engine + model). See "Platforms" above for OpenClaw vs Claude Code.
 # Workspace defaults to $OPENCLAW_WORKSPACE, else the per-target default (~/.openclaw/workspace or ~/.claude/memory-suite).
-bash install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--skip-model] [--model-only] [--force]
+bash install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--with-sqlite-vec] [--skip-model] [--model-only] [--force]
 
 # Confirm it's healthy (runs the engine's 3 unit tests; warns if the model isn't present yet).
 bash check.sh [--workspace DIR]
@@ -136,6 +136,50 @@ msem "your query" --rerank      # …or the CLI flag (also works on mdeep)
 
 Without the model present, `--with-reranker` un-run, the flag simply no-ops. Full model/runtime
 detail is in **[`PORTABILITY.md`](./PORTABILITY.md)**.
+
+## Optional: sqlite-vec vector store (scaling, OFF by default)
+
+At small/medium corpus sizes, `msem`/`mdeep` load the whole `index.json` and cosine-score **every** chunk
+in JS. That's simple and fast enough for thousands of chunks — but it's `O(n)` per query and grows with the
+corpus. For **large** stores you can opt into a **sqlite-vec** backend: a derived, on-disk KNN index that
+finds the nearest chunks in native C (memory-mapped, no whole-JSON load) and hands just that candidate set
+to the rest of the pipeline.
+
+**It's a query-time *read accelerator*, and recall is IDENTICAL.** `index.json` stays the source of truth
+and the write path (`index.mjs` / `index-transcripts.mjs`) is unchanged — the sqlite db is *built from*
+`index.json`. Only the **semantic-candidate fetch** changes backend; the **keyword + RRF + decay + optional
+rerank** stages run exactly as before. Candidates carry their stored vector (bit-identical to `index.json`'s)
+and are re-scored with the *same* `cosine()`, and their original `index.json` order is preserved for
+tie-breaks — so the ranking is **byte-for-byte the same** as the JSON path (verified: `VECSTORE=sqlite` vs
+`VECSTORE=json` produce identical ranked rows).
+
+**Default behavior is unchanged.** With the flag off *or* the deps absent *or* the db missing, `msem`/`mdeep`
+run the exact JSON path they always have. The accelerator **never fails a search**: any missing dep, missing
+db, dimension mismatch, or error silently falls back to JSON.
+
+**Install it (opt-in — not installed by default):**
+
+```bash
+bash install.sh --with-sqlite-vec        # adds better-sqlite3 + sqlite-vec to the runtime (native build)
+node vecstore.mjs --build --ws "<WORKSPACE>"   # build the derived KNN db from index.json (also --incremental)
+```
+
+**Turn it on** (per query, once the db is built):
+
+```bash
+VECSTORE=sqlite msem "your query"        # explicit opt-in
+# …or it auto-enables once the corpus has ≥ VECSTORE_THRESHOLD chunks (default 8000)
+```
+
+| Knob | Meaning |
+|------|---------|
+| `VECSTORE=sqlite` / `json` | force the sqlite backend / force the JSON path (default is JSON, auto above the threshold) |
+| `VECSTORE_THRESHOLD` | chunk count at/above which the backend auto-enables when `VECSTORE` is unset (default `8000`) |
+| `VECSTORE_DB` | path to the db (default `<workspace>/memory/.semantic/vec.sqlite`) |
+| `VECSTORE_CANDIDATES` | candidate-pool size fetched per query (default generous: `max(k×25, 400)`) |
+
+Rebuild the db (or `--incremental`) whenever you rebuild `index.json`; if it's stale or absent the engine just
+falls back to JSON. Full dependency/OS detail is in **[`PORTABILITY.md`](./PORTABILITY.md)**.
 
 ## Data safety — your memory is never wiped
 

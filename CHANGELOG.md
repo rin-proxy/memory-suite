@@ -3,6 +3,22 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.3.0 (2026-07-03)
+
+Two provider-free retrieval upgrades — write-time reconciliation, and an optional cross-encoder reranker.
+
+- **feat:** write-time **reconciliation** (dedup + conflict pre-filter). `reconcile.mjs` embeds a candidate memory and
+  cosine-matches it against the existing index: `skip` (≥0.95 near-identical → deterministic dedup, no LLM), `review`
+  (0.85–0.95 → the *running agent* decides duplicate/update/contradiction via a returned `verdictPrompt` — **no standing
+  LLM provider**), `new` (<0.85). Wired into `smart-distill/scripts/distill-store.sh` (best-effort, `--no-reconcile`
+  opt-out, never blocks a store). New `test-reconcile.mjs` (15 tests). Pattern inspired by dinomem, adapted provider-free.
+- **feat:** optional local **cross-encoder reranker** (`rerank.mjs`) as a final stage after RRF+decay, via
+  node-llama-cpp's `createRankingContext`/`rankAll` (bge-reranker-v2-m3 GGUF). **OFF by default, model-gated**: `RERANK=1`
+  / `--rerank` enables it; absent flag/model ⇒ retrieval is byte-for-byte unchanged (empirically verified against the real
+  index). Model via `install.sh --with-reranker` (~600MB; HF revision pinned, file-sha pending). New `test-rerank.mjs` (16 tests).
+- **chore:** `cosine` moved to the model-free `store.mjs` (shared by the reconciler + engine; transparent to `hybrid`/`deep`).
+- **docs:** README / PORTABILITY / SKILL.md updated honestly — reconciliation = code pre-filter + agent-driven verdict; reranker = optional/off-by-default.
+
 ## 1.2.0 (2026-07-03)
 
 Genuinely dual-platform (OpenClaw **and** Claude Code), platform-neutral skill descriptions, and cruft removal.

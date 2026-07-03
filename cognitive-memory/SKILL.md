@@ -78,6 +78,27 @@ Key properties: **local** (embedding model on the agent host, no cloud call) · 
 3. **Agent instructions:** append `assets/templates/agents-memory-block.md` to your AGENTS.md.
 4. **Verify:** `"Remember that I prefer TypeScript"` → agent classifies → writes to semantic + core, logs audit. `"What do you know about my preferences?"` → searches core first, then semantic graph.
 
+## 🧬 Write-time reconciliation — dedup + conflict pre-filter (keep the store clean)
+
+The read side re-ranks; the **write side** stops duplicate/contradictory memories from ever landing. Before a new memory is written, `scripts/semantic/reconcile.mjs` embeds the candidate and compares it (cosine) to the already-indexed chunks in `memory/.semantic/index.json`, then buckets:
+
+| cosine | meaning | action |
+|---|---|---|
+| ≥ **0.95** (`RECONCILE_HIGH`) | near-identical | **skip** — deterministic dedup, no LLM |
+| **0.85**–0.95 (`RECONCILE_MID`) | similar / ambiguous | **review** — the running agent judges |
+| < 0.85 | genuinely new | **new** — store normally |
+
+**Provider-free by design.** The cosine pre-filter is **pure code** (no cloud, no API). Only the ambiguous MID band needs judgment, and that judgment comes from the **agent already in the session**: reconcile returns a `verdictPrompt` asking it to classify the candidate as *duplicate / update / contradiction / distinct* from the context it already has. There is **no standing LLM/provider** arbitrating writes — this is the key adaptation of the dinomem reconciliation pattern for a cloud-free stack.
+
+**Never blocks a store.** A missing model, a missing/corrupt index, or any error ⇒ action `new`. Reconciliation can drop a confident duplicate or flag an ambiguous one for review — it can *never* lose a memory you meant to keep. Thresholds are env-tunable (`RECONCILE_HIGH` / `RECONCILE_MID`).
+
+```bash
+node scripts/semantic/reconcile.mjs --text "candidate memory" --ws "$OPENCLAW_WORKSPACE"   # human report
+node scripts/semantic/reconcile.mjs --file note.md --action-only                            # → new|skip|review
+```
+
+`smart-distill`'s store path already calls this before writing. Pure core is unit-tested with synthetic vectors (`test-reconcile.mjs`, no model). Full mechanism: `references/operations.md`.
+
 ## Trigger System
 
 **Remember:** "remember", "don't forget", "keep in mind", "note that", "important:", "for future reference", "save this"
@@ -92,7 +113,7 @@ Key properties: **local** (embedding model on the agent host, no cloud call) · 
 ## Reference Materials
 
 - `references/stores-and-audit.md` — Four-store architecture, full file tree, audit trail, key parameters
-- `references/operations.md` — Decay · Reflection · Identity · Multi-agent access (full procedures)
+- `references/operations.md` — Decay · Write-time reconciliation · Reflection · Identity · Multi-agent access (full procedures)
 - `references/architecture.md` — Full design document (1200+ lines) · `references/routing-prompt.md` — LLM memory classifier · `references/reflection-process.md` — Reflection philosophy + internal-monologue format
 
 ## Troubleshooting

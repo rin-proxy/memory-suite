@@ -52,6 +52,46 @@ The signal only starts shaping results once real access data accumulates.
 
 ---
 
+## Write-time Reconciliation — dedup + conflict pre-filter at the "add a memory" path (implemented)
+
+Decay is a *retrieval-time* signal; reconciliation is its **write-time** counterpart. Before a new memory is
+written, `scripts/semantic/reconcile.mjs` embeds the candidate and compares it (cosine) against the existing
+indexed chunks in `memory/.semantic/index.json`, then buckets on two thresholds:
+
+```
+cosine ≥ HIGH (0.95, env RECONCILE_HIGH)      → NEAR-IDENTICAL → action "skip"   (deterministic dedup, no LLM)
+MID ≤ cosine < HIGH (0.85, env RECONCILE_MID) → SIMILAR         → action "review" (agent-driven verdict)
+cosine < MID                                   → NEW            → action "new"    (store normally)
+```
+
+**Provider-free by design** (the adaptation of the dinomem reconciliation pattern for a cloud-free stack):
+- The cosine **pre-filter is pure code** — no LLM, no network, no provider.
+- The HIGH band is resolved **deterministically** in code (drop the duplicate).
+- Only the ambiguous **MID band needs judgment**, and that judgment is supplied by the **agent already running
+  the session**. `reconcile()` returns a `verdictPrompt` asking that agent to classify the candidate as
+  *duplicate / update / contradiction / distinct* using context it already holds. There is **no standing
+  LLM/provider** arbitrating every write (dinomem needs one; this does not).
+
+**Never blocks a store (safety contract):** a missing model, a missing/corrupt index, an un-embeddable
+candidate, or any error ⇒ action `new`. Reconciliation can only *drop a confident duplicate* or *flag an
+ambiguous case for review* — it can never lose a memory the agent meant to keep.
+
+**Pure core + guarded CLI.** `reconcile(candVec, existing, opts)` is model-free (imports only `cosine` from
+`store.mjs`), so it's unit-tested with synthetic vectors and no model (`test-reconcile.mjs`). The CLI
+dynamically imports the embedding model only when actually run:
+
+```bash
+node scripts/semantic/reconcile.mjs --text "candidate memory" --ws "$OPENCLAW_WORKSPACE"   # human report
+node scripts/semantic/reconcile.mjs --file note.md --action-only                            # new|skip|review
+```
+
+`smart-distill`'s `distill-store.sh` calls this before writing a distilled note: `skip` drops the dup,
+`review` writes the note with a `reconcile: review` frontmatter flag for the agent to resolve, `new` writes
+normally. The candidate is embedded as a **document** (no query prefix), matching how `index.mjs` embeds
+chunks, so candidate and stored vectors live in the same space.
+
+---
+
 ## Reflection Process
 
 **Follow this flow IN ORDER:**

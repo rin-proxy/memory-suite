@@ -3,12 +3,14 @@
 // Usage: node hybrid.mjs "query" [k] [--type T] [--status S] [--tag G]
 import { INDEX_PATH, QUERY_PREFIX, embed, cosine, dispose, fs } from "./common.mjs";
 import { loadDecayScores, decayFactor, recordAccess } from "./decay.mjs";
+import { rerankStage, disposeRerank } from "./rerank.mjs";
 
 const argv = process.argv.slice(2);
 const flags = {};
 const pos = [];
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i].startsWith("--")) flags[argv[i].slice(2)] = argv[++i];
+  if (argv[i] === "--rerank") flags.rerank = true;            // OPTIONAL final rerank stage (boolean flag; no value)
+  else if (argv[i].startsWith("--")) flags[argv[i].slice(2)] = argv[++i];
   else pos.push(argv[i]);
 }
 const query = pos[0];
@@ -64,8 +66,15 @@ if (Object.keys(decay.entries).length) {
   merged.sort((a, b) => (b.score ?? b.rrf) - (a.score ?? a.rrf));
 }
 
+// OPTIONAL final stage — cross-encoder rerank of the decay-ordered head (OFF by default; model-gated).
+// Disabled OR reranker model/runtime unavailable ⇒ `ordered` === `merged`, so everything below is
+// byte-for-byte identical to today. Enable with RERANK=1 env or the --rerank flag (needs the reranker model).
+const rr = await rerankStage(query, merged, (r) => chunks[r.i].text, { k, rerank: flags.rerank === true });
+const ordered = rr.ranked;
+
 console.log(`🔎 hybrid: "${query}"${filterDesc ? " [" + filterDesc + "]" : ""}  (${chunks.length} chunks · kw: ${terms.join(", ") || "none"})\n`);
-for (const r of merged.slice(0, k)) {
+if (rr.applied) console.log(`   ⟲ reranked top ${rr.scored} via ${rr.model} (cross-encoder)\n`);
+for (const r of ordered.slice(0, k)) {
   const c = chunks[r.i];
   const snip = c.text.replace(/\s+/g, " ").slice(0, 150);
   console.log(`  rrf ${r.rrf.toFixed(4)} | ×${r.factor.toFixed(2)} | sem ${r.sem.toFixed(3)} | kw ${r.kw} | [${c.type}]  ${c.rel}:${c.startLine}`);
@@ -73,4 +82,5 @@ for (const r of merged.slice(0, k)) {
 }
 
 // Living signal (best-effort, never fails/slows search): reinforce the files we actually returned.
-recordAccess([...new Set(merged.slice(0, k).map((r) => chunks[r.i].rel))]);
+recordAccess([...new Set(ordered.slice(0, k).map((r) => chunks[r.i].rel))]);
+if (rr.applied) await disposeRerank();

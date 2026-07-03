@@ -2,10 +2,11 @@
 //   node deep.mjs "query" [k] [--src engineer|threads|archive] [--after YYYY-MM-DD] [--before YYYY-MM-DD]
 import { WS, INDEX_PATH, QUERY_PREFIX, embed, cosine, dispose, fs, path } from "./common.mjs";
 import { loadDecayScores, decayFactor, recordAccess } from "./decay.mjs";
+import { rerankStage, disposeRerank } from "./rerank.mjs";
 
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
-for (let i = 0; i < argv.length; i++) { if (argv[i].startsWith("--")) flags[argv[i].slice(2)] = argv[++i]; else pos.push(argv[i]); }
+for (let i = 0; i < argv.length; i++) { if (argv[i] === "--rerank") flags.rerank = true; else if (argv[i].startsWith("--")) flags[argv[i].slice(2)] = argv[++i]; else pos.push(argv[i]); }
 const query = pos[0];
 const k = parseInt(pos[1] || "8", 10);
 if (!query) { console.error('Usage: mdeep "query" [k] [--src S] [--after YYYY-MM-DD] [--before YYYY-MM-DD]'); process.exit(1); }
@@ -60,13 +61,21 @@ if (Object.keys(decay.entries).length) {
   merged.sort((a, b) => (b.score ?? b.r) - (a.score ?? a.r));
 }
 
+// OPTIONAL final stage — cross-encoder rerank of the decay-ordered head (OFF by default; model-gated).
+// Disabled OR reranker model/runtime unavailable ⇒ `ordered` === `merged`, so everything below is
+// byte-for-byte identical to today. Enable with RERANK=1 env or the --rerank flag (needs the reranker model).
+const rr = await rerankStage(query, merged, (m) => chunks[m.i].text, { k, rerank: flags.rerank === true });
+const ordered = rr.ranked;
+
 const nTx = chunks.filter((c) => c.source.startsWith("tx")).length;
 console.log(`🔎 deep: "${query}"  (${chunks.length} chunks: ${nTx} transcript + ${chunks.length - nTx} curated · kw: ${terms.join(", ") || "none"})\n`);
-for (const m of merged.slice(0, k)) {
+if (rr.applied) console.log(`   ⟲ reranked top ${rr.scored} via ${rr.model} (cross-encoder)\n`);
+for (const m of ordered.slice(0, k)) {
   const c = chunks[m.i];
   console.log(`  rrf ${m.r.toFixed(4)} | ×${m.factor.toFixed(2)} | sem ${m.sem.toFixed(3)} | kw ${m.kw} | [${c.source}${c.ts ? " " + String(c.ts).slice(0, 10) : ""}] ${c.ref}`);
   console.log(`        ${c.text.replace(/\s+/g, " ").slice(0, 150)}\n`);
 }
 
 // Living signal (best-effort): reinforce the curated files we returned (transcript rel=null is skipped).
-recordAccess([...new Set(merged.slice(0, k).map((m) => chunks[m.i].rel))]);
+recordAccess([...new Set(ordered.slice(0, k).map((m) => chunks[m.i].rel))]);
+if (rr.applied) await disposeRerank();

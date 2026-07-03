@@ -6,7 +6,7 @@
 #  memory store the skills use.
 #
 #  Usage:
-#    ./install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--model-only] [--skip-model]
+#    ./install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--model-only] [--skip-model]
 #
 #    WORKSPACE     target workspace (default: $OPENCLAW_WORKSPACE, else — by --target —
 #                  $HOME/.openclaw/workspace for openclaw, $HOME/.claude/memory-suite for
@@ -17,6 +17,10 @@
 #                  Same engine (semantic stack, node-llama-cpp, model, memory store) either way.
 #    --with-cron   ALSO install daily reindex crons in your LOCAL timezone
 #                  (OFF by default — nothing is scheduled unless you pass this).
+#    --with-reranker  ALSO download the OPTIONAL cross-encoder reranker GGUF (~600MB) that powers
+#                  the off-by-default precision rerank stage (rerank.mjs). Default recall never
+#                  needs it; without it the reranker simply stays disabled. Enable at query time
+#                  with RERANK=1 (or the --rerank flag). OFF by default.
 #    --skip-model  do everything except download the embedding model.
 #    --model-only  only fetch + verify the model, then exit.
 #
@@ -37,6 +41,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 WITH_CRON=false
+WITH_RERANKER=false  # opt-in: also fetch the OPTIONAL cross-encoder reranker model (off by default)
 SKIP_MODEL=false
 MODEL_ONLY=false
 FORCE=false          # refresh installed skill code even when it already exists (update path)
@@ -46,6 +51,7 @@ WS_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --with-cron)  WITH_CRON=true ;;
+    --with-reranker) WITH_RERANKER=true ;;
     --skip-model) SKIP_MODEL=true ;;
     --model-only) MODEL_ONLY=true ;;
     --force)      FORCE=true ;;
@@ -91,7 +97,18 @@ MODEL_URL="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/${MODEL_FILE
 # treated as a packaging error and hard-fails (we refuse to install an unverified model).
 MODEL_SHA256="745f544edc8421b9398684282b25cc933fbc766467fc9eedba96ed12440206aa"
 
-NLC_VERSION="^3.18.1"   # node-llama-cpp — the native embedding runtime
+# --- OPTIONAL reranker model pin (only fetched with --with-reranker; see rerank.mjs / PORTABILITY.md). ---
+# Cross-encoder GGUF for the OFF-by-default precision rerank stage. Not needed for default recall.
+# node-llama-cpp v3.18+ exposes reranking via model.createRankingContext().rankAll(); this file feeds it.
+RERANKER_FILE="bge-reranker-v2-m3-Q8_0.gguf"
+RERANKER_REPO="gpustack/bge-reranker-v2-m3-GGUF"
+RERANKER_REVISION="3093af03b1a635e67b084b1d8c03c5f5e020fd05"   # pinned immutable commit; file-sha still pending (set RERANKER_SHA256 after a verified download)
+RERANKER_URL="https://huggingface.co/${RERANKER_REPO}/resolve/${RERANKER_REVISION}/${RERANKER_FILE}"
+# Blank ⇒ integrity is UNVERIFIED and a loud warning is printed (this is an opt-in extra, so a blank
+# pin does NOT abort — unlike the required embedding model above). Set to enforce sha256 verification.
+RERANKER_SHA256=""
+
+NLC_VERSION="^3.18.1"   # node-llama-cpp — the native embedding + reranking runtime
 
 say()  { printf '%s\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
@@ -130,6 +147,7 @@ say "   workspace : $WORKSPACE"
 say "   skills    : $(printf '%s ' $SUITE_SKILLS)"
 say "   model     : $MODEL_FILE  (downloaded, ~1.1GB — not bundled)"
 say "   cron      : $([ "$WITH_CRON" = true ] && echo 'will install (local TZ)' || echo 'skipped (pass --with-cron to enable)')"
+say "   reranker  : $([ "$WITH_RERANKER" = true ] && echo 'will download (optional cross-encoder, ~600MB)' || echo 'skipped (off by default; pass --with-reranker)')"
 say ""
 
 # ---------------------------------------------------------------------------
@@ -327,6 +345,47 @@ if [ "$SKIP_MODEL" = false ]; then
          The download may be corrupt or tampered. Delete it and re-run."
   fi
   info "sha256 OK ✓"
+  say ""
+fi
+
+# ---------------------------------------------------------------------------
+# 4b. OPTIONAL cross-encoder reranker model  (only with --with-reranker; ~600MB)
+#     Powers the OFF-by-default precision rerank stage (rerank.mjs). Default recall
+#     never needs it; a failed/absent download just leaves the stage disabled.
+# ---------------------------------------------------------------------------
+if [ "$WITH_RERANKER" = true ]; then
+  say "4b) Optional reranker model → $WORKSPACE/node-llama-cpp/models/$RERANKER_FILE"
+  MODELS_DIR="$WORKSPACE/node-llama-cpp/models"
+  mkdir -p "$MODELS_DIR"
+  RR_PATH="$MODELS_DIR/$RERANKER_FILE"
+  if [ -f "$RR_PATH" ]; then
+    info "reranker already present — skipping download ($(du -h "$RR_PATH" 2>/dev/null | cut -f1 || echo '?'))"
+  else
+    info "downloading reranker from: $RERANKER_URL"
+    RR_TMP="$RR_PATH.partial"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fL --retry 3 -o "$RR_TMP" "$RERANKER_URL" || { rm -f "$RR_TMP"; warn "reranker download failed — the optional rerank stage stays disabled. Fetch it manually to $RR_PATH."; }
+    else
+      wget -O "$RR_TMP" "$RERANKER_URL" || { rm -f "$RR_TMP"; warn "reranker download failed — the optional rerank stage stays disabled. Fetch it manually to $RR_PATH."; }
+    fi
+    if [ -f "$RR_TMP" ]; then mv "$RR_TMP" "$RR_PATH"; info "downloaded ($(du -h "$RR_PATH" 2>/dev/null | cut -f1 || echo '?'))"; fi
+  fi
+  # Verify only if a pin is set (opt-in extra ⇒ a blank pin warns instead of aborting).
+  if [ -f "$RR_PATH" ]; then
+    if [ -n "$RERANKER_SHA256" ]; then
+      GOT="$(sha256 < "$RR_PATH" | awk '{print $1}')"
+      if [ "$GOT" != "$RERANKER_SHA256" ]; then
+        rm -f "$RR_PATH"
+        warn "reranker sha256 MISMATCH ($RERANKER_FILE) — expected $RERANKER_SHA256, got $GOT. Removed the bad file; rerank stays disabled."
+      else
+        info "reranker sha256 OK ✓"
+        info "enable at query time with:  RERANK=1 msem \"…\"   (or the --rerank flag)"
+      fi
+    else
+      warn "reranker integrity UNVERIFIED (no RERANKER_SHA256 pin). Verify the file yourself, or pin it in install.sh."
+      info "enable at query time with:  RERANK=1 msem \"…\"   (or the --rerank flag)"
+    fi
+  fi
   say ""
 fi
 

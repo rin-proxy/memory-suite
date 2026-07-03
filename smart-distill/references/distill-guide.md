@@ -29,6 +29,15 @@ tags: [...]        # if --tags given
 ## Provenance + dedup
 The `sha256` is computed over `title + source + content`. Same content → same hash → same filename → **no duplicates** (a re-distill of identical content is a no-op). The hash is also the audit trail: it ties the distilled note back to exactly what produced it.
 
+## Write-time reconciliation (near-dup + conflict pre-filter)
+The sha256 hash only stops **byte-identical** re-distills. `distill-store.sh` additionally runs `reconcile.mjs` before writing to catch *near*-duplicates and contradictions the hash can't see:
+
+- **cosine ≥ 0.95** to an existing memory → **skip** (drop the near-duplicate; logged, not written).
+- **0.85 ≤ cosine < 0.95** → **store with a `reconcile: review` flag** + a prompt for the running agent to judge *duplicate / update / contradiction / distinct*. The cosine pre-filter is pure code; the verdict is the **agent's** — there is **no cloud/provider** in the loop.
+- **cosine < 0.85** → store normally.
+
+It's **best-effort**: if node / the semantic stack / the embedding model isn't available, the step is skipped and the note is written exactly as before (reconciliation never blocks a store). Env-tunable via `RECONCILE_HIGH` / `RECONCILE_MID`; opt out per-call with `--no-reconcile`. Full mechanism: cognitive-memory `references/operations.md`.
+
 ## Recall
 ```bash
 msem "<topic>" 8 --type distilled     # only distilled notes

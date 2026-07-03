@@ -85,7 +85,7 @@ conversation transcripts**, and it indexes **both** OpenClaw history **and** Cla
 ```bash
 # Install the whole suite (5 skills + shared engine + model). See "Platforms" above for OpenClaw vs Claude Code.
 # Workspace defaults to $OPENCLAW_WORKSPACE, else the per-target default (~/.openclaw/workspace or ~/.claude/memory-suite).
-bash install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--skip-model] [--model-only] [--force]
+bash install.sh [WORKSPACE] [--target openclaw|claude-code] [--with-cron] [--with-reranker] [--skip-model] [--model-only] [--force]
 
 # Confirm it's healthy (runs the engine's 3 unit tests; warns if the model isn't present yet).
 bash check.sh [--workspace DIR]
@@ -103,6 +103,39 @@ After install, build the first (heavy) index yourself — the installer delibera
 cd "<WORKSPACE>/scripts/semantic" && OPENCLAW_WORKSPACE="<WORKSPACE>" node index.mjs
 "<WORKSPACE>/scripts/semantic/msem" "something you remember" 8
 ```
+
+## Optional: cross-encoder reranker (precision boost, OFF by default)
+
+Recall runs in two stages you can *opt into a third*:
+
+1. **Hybrid** — semantic (arctic-embed) + keyword, fused with Reciprocal Rank Fusion.
+2. **Decay re-rank** — a retrieval-time multiplier on how a memory has actually been used.
+3. **Cross-encoder rerank** *(optional, off by default)* — re-scores the top ~50 candidates by reading
+   the query and each candidate **together**, which is more precise than the bi-encoder cosine that
+   produced stage 1. It only reorders that head, then the usual top-k is taken.
+
+**Default behavior is unchanged.** With the flag off *or* the reranker model absent, `msem`/`mdeep`
+return **exactly** today's ranking — byte-for-byte. The stage never fails a search: any missing
+model, missing runtime, or error silently falls back to the stage-2 order.
+
+**Turn it on** (needs the reranker model — see below):
+
+```bash
+RERANK=1 msem "your query"      # env flag
+msem "your query" --rerank      # …or the CLI flag (also works on mdeep)
+```
+
+**What it needs to actually run:**
+
+| Piece | Value |
+|-------|-------|
+| Runtime | `node-llama-cpp` **v3.18+** (already the suite's engine) — reranking via `model.createRankingContext().rankAll()` |
+| Model | a GGUF cross-encoder, default **`bge-reranker-v2-m3-Q8_0.gguf`** (~600MB) |
+| Install | `bash install.sh --with-reranker` (optional; downloads the model) — or drop the GGUF into `<workspace>/node-llama-cpp/models/` yourself |
+| Override path | `RERANK_MODEL=/path/to/reranker.gguf` |
+
+Without the model present, `--with-reranker` un-run, the flag simply no-ops. Full model/runtime
+detail is in **[`PORTABILITY.md`](./PORTABILITY.md)**.
 
 ## Data safety — your memory is never wiped
 

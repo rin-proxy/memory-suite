@@ -15,4 +15,13 @@ export function writeJsonAtomic(target, obj) {
   fs.renameSync(tmp, target);                 // …then atomically swap over the real file
 }
 
+// Cosine similarity — model-free math, so it lives here (not common.mjs) and can be shared by the
+// pure write-time reconciler (reconcile.mjs) without dragging in node-llama-cpp. common.mjs re-exports
+// it, so the model-side scripts (hybrid.mjs / deep.mjs) keep importing `cosine` from common.mjs unchanged.
+export function cosine(a, b) {
+  let d = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return d / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+}
+
 export { fs, path };

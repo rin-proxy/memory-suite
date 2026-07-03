@@ -68,6 +68,30 @@ model is **downloaded, not bundled** (it's large), then integrity-verified befor
 You can fetch/verify the model on its own with `./install.sh --model-only`, or skip it with
 `--skip-model` (e.g. to wire the model in manually).
 
+## The OPTIONAL reranker model (off by default)
+
+Retrieval has an **optional** third stage — a local **cross-encoder reranker** that re-scores the top
+candidates for extra precision (see `_semantic-stack/rerank.mjs`). It is **off by default and not
+installed by default**: default recall (`msem`/`mdeep`) is byte-for-byte unchanged without it, and if
+the model or the flag is absent the stage silently no-ops. Nothing here is required for normal use.
+
+| Field | Value |
+|-------|-------|
+| Runtime | **`node-llama-cpp` v3.18+** — the *same* engine already used for embeddings. Reranking is exposed via `model.createRankingContext()` → `ctx.rankAll(query, documents)` (returns a 0–1 relevance score per document). Verified present in the installed v3.19 runtime. |
+| Model | a GGUF cross-encoder, default **`bge-reranker-v2-m3-Q8_0.gguf`** (~600MB) |
+| Installed to | `<workspace>/node-llama-cpp/models/bge-reranker-v2-m3-Q8_0.gguf` |
+| Path override | `RERANK_MODEL=/abs/path/to/reranker.gguf` |
+| Enable at query time | `RERANK=1 msem "…"` **or** `msem "…" --rerank` (also on `mdeep`) |
+
+### How it's fetched
+
+`./install.sh --with-reranker` downloads the GGUF into the models dir above (skipped if already
+present). Because this is an **opt-in extra**, integrity is verified **only if** a `RERANKER_SHA256`
+pin is set in `install.sh`; with a blank pin the installer downloads but prints a loud
+**UNVERIFIED** warning (unlike the *required* embedding model, whose blank pin hard-fails). A
+packager who wants enforced integrity should pin an immutable HF revision **and** the sha256. You can
+also skip the installer entirely and just drop a reranker GGUF into the models dir yourself.
+
 ## macOS/BSD shims (what was made portable)
 
 | Concern | GNU / Linux | Portable handling |

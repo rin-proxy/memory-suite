@@ -2,8 +2,8 @@
 import { getLlama } from "node-llama-cpp";
 // WS + writeJsonAtomic + fs/path live in the model-free store.mjs so decay.mjs (and its tests) can load
 // without pulling node-llama-cpp; re-exported here so index/hybrid/deep keep importing them from common.mjs.
-import { WS, writeJsonAtomic, fs, path } from "./store.mjs";
-export { WS, writeJsonAtomic, fs, path };
+import { WS, writeJsonAtomic, cosine, fs, path } from "./store.mjs";
+export { WS, writeJsonAtomic, cosine, fs, path };
 // Upgraded 2026-05-31: arctic-embed-s (English-leaning) → arctic-embed-l-v2.0 (multilingual, incl. Indonesian). dim 1024.
 export const MODEL = `${WS}/node-llama-cpp/models/snowflake-arctic-embed-l-v2.0-f16.gguf`;
 export const INDEX_PATH = `${WS}/memory/.semantic/index.json`;
@@ -24,11 +24,8 @@ export async function embed(text) {
   // arctic-embed context window is 512 tokens; cap chars to stay safely under it.
   return Array.from((await ctx.getEmbeddingFor(text.slice(0, 1200))).vector);
 }
-export function cosine(a, b) {
-  let d = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-  return d / (Math.sqrt(na) * Math.sqrt(nb) || 1);
-}
+// cosine now lives in store.mjs (model-free) and is re-exported above, so pure code (reconcile.mjs)
+// can share the exact same implementation without importing node-llama-cpp.
 // Pack markdown into ~maxChars chunks on paragraph boundaries; track 1-based start line.
 export function chunkText(content, maxChars = 600) {
   const lines = content.split("\n");

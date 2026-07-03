@@ -48,9 +48,13 @@ function memGuard() {
   return a < MIN_FREE_MB ? `free mem ${a.toFixed(0)}MB of ${(os.totalmem() / (1024 * 1024)).toFixed(0)}MB too low` : null;
 }
 // ambient load matters only BEFORE we start (is something else hammering the box?).
+// Load ceiling scales with core count: the old flat 2.5 was tuned for a 1-core VPS; on an N-core box a
+// load of 2.5 is nothing (~0.3/core), so gate on per-core load instead — 1 core → 2.5 (preserves old
+// behavior), 8 cores → 20. Override with TRANSCRIPT_MAX_LOAD=<n>.
+const MAX_LOAD = Number(process.env.TRANSCRIPT_MAX_LOAD) || (os.cpus()?.length || 1) * 2.5;
 function entryGuard() {
   const load = os.loadavg()[0]; // 1-min load average (0 on platforms without support, e.g. Windows)
-  if (load > 2.5) return `ambient load ${load.toFixed(2)} too high`;
+  if (load > MAX_LOAD) return `ambient load ${load.toFixed(2)} > ${MAX_LOAD.toFixed(1)} (cores×2.5) too high`;
   return memGuard();
 }
 // distinguish "missing" (expected on first run → use default) from "corrupt" (ABORT — never overwrite good data with {}).

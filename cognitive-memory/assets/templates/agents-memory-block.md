@@ -4,6 +4,28 @@
 Your MEMORY.md (core memory) is always in context. Use it as primary awareness of
 who the user is and what matters. Don't search for info already in core memory.
 
+### Save-by-default (always on — real-time capture)
+The moment a high-signal item appears, capture it to curated memory BEFORE you reply
+— "save first, respond second". This is Layer 1: **you** do it in real time; there is
+no cron or provider doing it for you. It complements the raw-transcript net (`mdeep`):
+transcripts keep everything said; you promote the load-bearing items into clean recall.
+
+**Save immediately when:** a decision is made · a preference or personal fact is stated ·
+a milestone is hit · a prior fact is corrected · the user says "remember this / save that /
+note that / for future reference" · anything they'd be annoyed to repeat. When in doubt, save
+— dedup is automatic, so an unnecessary save is near-free; a lost decision is not.
+
+```bash
+scripts/save.sh --text '<the item>' [--type decision|preference|fact|correction|milestone] [--tags a,b]
+```
+
+It runs the write-time reconcile first (skips near-duplicates, flags the ambiguous band
+`reconcile: review`, writes when new) and routes by type: `preference→00-core`,
+`decision|milestone→01-episodic`, `fact|correction→02-semantic`, untyped→`01-episodic`.
+It **never blocks** — if the semantic stack/model isn't present it just writes the note.
+This is a habit backed by a tool, not an autonomous daemon: if you don't call it, nothing
+is captured. Full protocol: `references/save-by-default.md`.
+
 ### Trigger Detection
 Monitor every user message for memory triggers:
 

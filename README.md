@@ -6,6 +6,25 @@ An agent is only as good as what it remembers. The Memory Suite is the full stac
 **store it, distill it, connect it, surface it, act on it** — packaged here as a single
 git-ready bundle that installs, updates, checks, and uninstalls as one unit.
 
+## In plain English
+
+Your AI agent forgets everything between sessions — so you keep re-explaining who you are, what you already decided, and where you left off. memory-suite fixes that. It gives the agent a real memory that:
+
+- **Remembers what matters** — decisions, preferences, facts — and saves the important things as they come up.
+- **Finds them again instantly** — fast local search over everything it has stored, plus your raw conversation history, so nothing is truly lost (you can recall a detail even after the context window was trimmed, or "compacted").
+- **Stays private** — the whole thing runs on your own machine with a local model. No cloud, nothing leaves your computer, works offline.
+- **Gets better over time** — it de-duplicates near-identical notes, ranks what you actually use, resurfaces things you'd forgotten, and connects ideas across topics.
+
+In one line: long-term memory + instant recall for your agent — so it stops forgetting and you stop repeating yourself.
+
+## Why install it
+
+**If you use Claude Code** — give your local Claude Code a memory that persists across sessions: it recalls past decisions and can search your entire Claude Code history to answer questions like "what did we decide about X three weeks ago?". Everything is indexed locally, and secrets are stripped before indexing. Install with `install.sh --target claude-code`.
+
+**If you run an OpenClaw agent** — drop in the full memory stack as five skills sharing one engine: the agent remembers across restarts, survives context compaction, keeps its own memory tidy, and can brief you each day. Install with `install.sh` (or `openclaw skills install git:OWNER/REPO`).
+
+Same engine, both platforms, all local and private.
+
 ## What's inside (5 skills, one system)
 
 ```

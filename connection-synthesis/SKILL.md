@@ -1,6 +1,6 @@
 ---
 name: connection-synthesis
-description: Turn a pile of stored notes into original insight by surfacing cross-domain links a human (or keyword search) would never put side by side, then synthesizing the real ones into a written insight. Use when you want to find connections across your notes, synthesize insights from memory, ask what links these notes, or run a weekly connection pass — the best thinking lives between the notes, not inside any one of them.
+description: Find the non-obvious connections between things your agent already knows. It surfaces memories that are related but from different topics — the kind a keyword search would never place side by side — so you get genuinely new insight instead of the same obvious hits. Use to connect ideas across your notes, synthesize insights from memory, or run a periodic "what links these?" pass.
 version: 1.0.0
 author: Rin
 license: UNLICENSED

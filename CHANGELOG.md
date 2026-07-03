@@ -3,6 +3,20 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.6.0 (2026-07-03)
+
+Anti-amnesia Layer 1 (save-by-default capture) + plain-English, benefit-led descriptions.
+
+- **feat:** absorbed anti-amnesia's **Layer 1 — real-time "save-by-default" capture** into cognitive-memory
+  (provider-free, agent-driven). `cognitive-memory/scripts/save.sh` writes a high-signal item (decision, preference,
+  fact, correction, milestone) straight to the curated store, running write-time **reconciliation** first (skip
+  near-dups / flag review / write new) — capture + dedup in one flow. New `references/save-by-default.md` protocol +
+  a SKILL.md section + the always-on rule in the AGENTS.md block template. Layers 2 (compaction hooks) and 3
+  (autonomous heartbeat/nightly) are noted as future/optional — no autonomous capture is claimed.
+- **docs:** rewrote all five skill `description:` lines and added README **"In plain English"** + **"Why install it"**
+  sections — plain, benefit-led English that says what each skill does for a non-technical user and why to install it
+  on a Claude Code or OpenClaw agent (kept honest; "use when" discovery triggers retained).
+
 ## 1.5.0 (2026-07-03)
 
 Optional sqlite-vec vector backend — a query-time scaling upgrade for large corpora, off by default, identical recall.

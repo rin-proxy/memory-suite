@@ -1,6 +1,6 @@
 ---
 name: cognitive-memory
-description: Battle-tested multi-store memory for AI agents with human-like encoding, consolidation, retrieval-time decay re-ranking, and hybrid (semantic + keyword) recall. Use when setting up agent memory, configuring remember/forget triggers, enabling sleep-time reflection, building knowledge graphs, or adding audit trails. Wires into local semantic search (msem) so recall stays language-agnostic and cloud-free.
+description: Give your AI agent a real long-term memory so you stop re-explaining yourself. It remembers what matters across sessions — decisions, preferences, facts — saves the important things as they come up, and finds them again in an instant with fast local search. Everything runs on your own machine (no cloud, your data stays private), and it can pull back details even after the conversation's context window was trimmed ("compacted"). Use when setting up agent memory, when the agent should remember or recall something, or to make it stop forgetting between sessions.
 version: 1.2.2
 metadata:
   openclaw:
@@ -98,6 +98,23 @@ node scripts/semantic/reconcile.mjs --file note.md --action-only                
 ```
 
 `smart-distill`'s store path already calls this before writing. Pure core is unit-tested with synthetic vectors (`test-reconcile.mjs`, no model). Full mechanism: `references/operations.md`.
+
+## 💾 Save-by-default (real-time capture)
+
+Recall re-ranks and reconcile dedups; **save-by-default** is what gets the high-signal item into the curated store in the first place — in real time, as it's said. It is **Layer 1** of the capture design: **agent-driven and provider-free** — *you*, the agent already in the session, notice something worth keeping and write it. No cron, no heartbeat, no LLM/provider call does this for you (that's the deferred Layers 2–3). It complements `mdeep`'s raw-transcript net: transcripts catch *everything* said (noisy); save-by-default promotes the *load-bearing* items (decisions, preferences, milestones, corrections) into clean, fast-recall memory so they reliably survive.
+
+**Triggers — save the moment you see one** (save first, respond second):
+- An explicit **"remember this" / "save that" / "note that" / "for future reference"**.
+- **A decision was made**, a **preference / personal fact** was stated, a **milestone** was hit, or a prior fact was **corrected**.
+- Anything the user would be annoyed to repeat. **When in doubt, save it** — reconcile drops true duplicates, so an unnecessary save is near-free.
+
+```bash
+scripts/save.sh --text '<the item>' [--type decision|preference|fact|correction|milestone] [--tags a,b]
+```
+
+`save.sh` runs the **same** write-time reconcile above (skip near-dups · flag `review` on the ambiguous band · write when new/unavailable — **never blocks**), then writes a note with frontmatter (`type/date/tags/source: save-by-default`) into the right numbered store: `preference→00-core`, `decision|milestone→01-episodic`, `fact|correction→02-semantic`, untyped→`01-episodic`.
+
+**Honest scope:** this is a *discipline backed by a tool*, not an autonomous daemon — if you don't call `save.sh`, Layer 1 captures nothing; its reliability is the always-on habit plus the one-command tool. Full protocol (WHAT / WHEN / HOW, layer roadmap): **`references/save-by-default.md`**.
 
 ## Trigger System
 

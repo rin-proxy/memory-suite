@@ -1,7 +1,8 @@
 // index-transcripts.mjs — build/update the DEEP transcript index (separate, sharded store).
-//   node index-transcripts.mjs --backfill    [--src engineer|threads|archive|all] [--max N] [--dry]
+//   node index-transcripts.mjs --backfill    [--src engineer|threads|archive|cc|all] [--cc-dir <path>] [--max N] [--dry]
 //   node index-transcripts.mjs --incremental  [...]
 // Sharded per src+month at memory/.semantic/transcripts/<src>-<YYYY-MM>.json ; cursor at .cursor.json
+// Claude Code sessions shard per project-slug too: transcripts/cc-<slug>-<YYYY-MM>.json (recall as --src cc).
 import { WS, embed, dispose, fs, path } from "./common.mjs";
 import { parseFile, kindOf } from "./transcripts.mjs";
 import { redact } from "./redact.mjs";
@@ -11,10 +12,13 @@ const DIR = `${WS}/memory/.semantic/transcripts`;
 const CURSOR = `${DIR}/.cursor.json`;
 const BATCH = 16;
 const MODEL = "snowflake-arctic-embed-l-v2.0-f16.gguf";
-// Claude Code / engineer transcript dir. Override with $CLAUDE_PROJECTS_DIR; defaults under $HOME.
-// If this dir is absent (e.g. no Claude Code sessions on this host), engineer indexing is skipped gracefully
+// Legacy "engineer" transcript dir (OpenClaw-bundled Claude Code). Override with $CLAUDE_PROJECTS_DIR.
+// If this dir is absent (e.g. no such sessions on this host), engineer indexing is skipped gracefully
 // (walkJsonl() returns [] for a missing dir), so the run still indexes threads + archives.
 const ENG = process.env.CLAUDE_PROJECTS_DIR || `${process.env.HOME}/.openclaw/.claude/projects`;
+// Standalone Claude Code projects root. Opt-in: indexed only when --cc-dir is passed or --src cc|claude-code.
+// Override the default with $CC_PROJECTS_DIR. Missing dir → walkJsonl() returns [] → skipped gracefully.
+const CC_DEFAULT = process.env.CC_PROJECTS_DIR || `${process.env.HOME}/.claude/projects`;
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -23,6 +27,10 @@ const incremental = has("--incremental");
 const dry = has("--dry");
 const srcFilter = val("--src", "all");
 const maxEmbed = parseInt(val("--max", "100000"), 10);
+// Claude Code discovery is additive/opt-in: triggered by --cc-dir <path> or --src cc|claude-code.
+const ccDir = val("--cc-dir", null);
+const ccWanted = ccDir != null || srcFilter === "cc" || srcFilter === "claude-code";
+const ccRoot = ccWanted ? (ccDir || CC_DEFAULT) : null;
 
 // Cross-platform via Node's `os` (Linux/macOS/BSD). The old /proc/meminfo + /proc/loadavg reads were
 // Linux-only and silently no-op'd on macOS/BSD — losing the anti-OOM guard there. os.freemem()/os.totalmem()
@@ -52,17 +60,32 @@ function walkJsonl(dir, acc = []) {
   }
   return acc;
 }
+// project-slug for a Claude Code file = its dir path relative to the CC root, sanitized for a filename.
+//   <ccRoot>/-Users-rin/<uuid>.jsonl → "Users-rin"   (a file directly under the root → "root")
+function ccSlug(root, file) {
+  const rel = path.relative(root, path.dirname(file));
+  const s = rel.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s || "root";
+}
+// Each entry: { file, kind (parser selector), src (shard/-src token + stored label), slug (CC only) }.
 function sources() {
   const out = [];
-  const add = (f) => { if (fs.existsSync(f) && (srcFilter === "all" || kindOf(f) === srcFilter)) out.push(f); };
+  const add = (f) => { const k = kindOf(f); if (fs.existsSync(f) && k && (srcFilter === "all" || k === srcFilter)) out.push({ file: f, kind: k, src: k, slug: null }); };
   walkJsonl(`${WS}/memory/threads`).forEach(add);
   for (const f of fs.readdirSync(`${WS}/memory`)) if (f.startsWith("session-archive") && f.endsWith(".jsonl")) add(`${WS}/memory/${f}`);
   walkJsonl(ENG).forEach(add);
+  // Standalone Claude Code sessions (opt-in): kind "claude-code" (parser) → shard/recall token "cc",
+  // sharded per project-slug + month. Dedup by path so a dir shared with ENG isn't indexed twice.
+  if (ccRoot) {
+    const seen = new Set(out.map((o) => o.file));
+    for (const f of walkJsonl(ccRoot)) if (!seen.has(f)) out.push({ file: f, kind: "claude-code", src: "cc", slug: ccSlug(ccRoot, f) });
+  }
   return out;
 }
-function shardPath(src, ts) {
+function shardPath(src, ts, slug) {
   const m = ts && /^\d{4}-\d{2}/.test(String(ts)) ? String(ts).slice(0, 7) : "undated";
-  return `${DIR}/${src}-${m}.json`;
+  const tag = slug ? `${src}-${slug}` : src;
+  return `${DIR}/${tag}-${m}.json`;
 }
 
 // --- crash-safe writes: single-writer lock + atomic replace (no torn/lost shards or cursor) ---
@@ -104,22 +127,21 @@ function getShard(p, src) {
 
 let scanned = 0, newUnits = 0, embedded = 0, redactedTot = 0, dupSkip = 0, stop = false;
 outer:
-for (const file of files) {
+for (const { file, kind, src, slug } of files) {
   const st = fs.statSync(file);
   const cur = cursor[file] || { size: 0, mtime: 0, linesIndexed: 0 };
   if (incremental && cur.size === st.size && cur.mtime === st.mtimeMs) continue; // unchanged
   scanned++;
-  const src = kindOf(file);
-  const { units, lineCount } = parseFile(file, incremental ? cur.linesIndexed : 0);
+  const { units, lineCount } = parseFile(file, incremental ? cur.linesIndexed : 0, kind);
   for (const u of units) {
-    const shard = getShard(shardPath(src, u.ts), src);
+    const shard = getShard(shardPath(src, u.ts, slug), src);
     if (shard._ids.has(u.id)) { dupSkip++; continue; }
     newUnits++;
     const r = redact(u.text); redactedTot += r.redacted;
     if (dry) { shard._ids.add(u.id); continue; }
     let vector; try { vector = await embed(r.text); } catch { continue; }
     shard.meta.dim = vector.length;
-    shard.items.push({ id: u.id, file: u.file, line: u.line, ts: u.ts, role: u.role, src: u.src, sub: u.sub, text: r.text, vector });
+    shard.items.push({ id: u.id, file: u.file, line: u.line, ts: u.ts, role: u.role, src, sub: u.sub, text: r.text, vector });
     shard._ids.add(u.id);
     embedded++;
     if (embedded % BATCH === 0) {

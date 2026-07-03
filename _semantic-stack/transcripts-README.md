@@ -16,15 +16,20 @@ existing embed infra (arctic-embed-l-v2.0, 1024-dim) — the curated index is **
 | `redact.mjs` | PURE secret redaction (gh/openai/jwt/bearer/assignment/private-key) |
 | `index-transcripts.mjs` | indexer: backfill/incremental, sharded, resource-guarded, fail-loud |
 | `deep.mjs` + `mdeep` | deep recall (curated ∪ transcript shards) |
-| `test-transcripts.mjs` | 16 unit tests (parser + redactor + noise filter) |
+| `test-transcripts.mjs` | unit tests (parser + redactor + noise filter) |
+| `test-cc.mjs` | unit tests for the Claude Code parser + content-detection |
 
 ## Sources indexed
 - `memory/threads/*.jsonl` — OpenClaw thread (keep `user_message`/`decision`/`technical_note`)
 - `memory/session-archive-*.jsonl` — archived sessions (`type:"message"`)
 - `~/.openclaw/.claude/projects/**/*.jsonl` — engineer (Claude Code) sessions (`user`/`assistant`, text blocks only)
+- `~/.claude/projects/**/*.jsonl` — **standalone Claude Code** sessions (opt-in via `--cc-dir` / `--src cc`).
+  Detected by shape (top-level `type` `user`/`assistant` + `message`); keeps only `text` blocks
+  (drops `thinking`/`tool_use`/`tool_result` + CC command wrappers). Shards per project-slug.
 
-Stored at `memory/.semantic/transcripts/<src>-<YYYY-MM>.json` (+ `.cursor.json`). `.semantic/` is
-excluded from the curated walk → no indexing loop.
+Stored at `memory/.semantic/transcripts/<src>-<YYYY-MM>.json` (+ `.cursor.json`); Claude Code adds the
+project-slug: `cc-<slug>-<YYYY-MM>.json` (recall as `--src cc`). `.semantic/` is excluded from the
+curated walk → no indexing loop.
 
 ## Usage
 ```bash
@@ -32,7 +37,10 @@ excluded from the curated walk → no indexing loop.
 ./mdeep "what did we decide about X" 8 [--src engineer|threads|archive] [--after 2026-05-01] [--before 2026-06-01]
 
 # one-shot backfill (off-peak)
-node index-transcripts.mjs --backfill [--src all|engineer|threads|archive] [--max N] [--dry]
+node index-transcripts.mjs --backfill [--src all|engineer|threads|archive|cc] [--max N] [--dry]
+
+# index standalone Claude Code sessions (opt-in): --src cc uses ~/.claude/projects, or point --cc-dir
+node index-transcripts.mjs --backfill --src cc [--cc-dir ~/.claude/projects] [--max N]
 
 # incremental (what the daily cron runs)
 node index-transcripts.mjs --incremental --src all --max 150

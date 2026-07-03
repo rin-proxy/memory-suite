@@ -35,7 +35,7 @@ export function stripChannelMeta(text) {
 
 // strip Claude Code / system-injected wrappers (caveats, command echoes, reminders) — noise, not conversation
 export function stripSystemNoise(text) {
-  const TAGS = "local-command-caveat|command-name|command-message|command-args|local-command-stdout|local-command-stderr|system-reminder|bash-input|bash-stdout|bash-stderr";
+  const TAGS = "local-command-caveat|command-name|command-message|command-args|local-command-stdout|local-command-stderr|system-reminder|bash-input|bash-stdout|bash-stderr|function_calls|function_results";
   return text
     .replace(new RegExp(`<(${TAGS})>[\\s\\S]*?</\\1>`, "gi"), " ")
     .replace(new RegExp(`</?(?:${TAGS})[^>]*>`, "gi"), " ")
@@ -86,6 +86,15 @@ export const PARSERS = {
     const text = textFromContent((o.message || {}).content);
     return text ? { ts: o.timestamp, role: o.type, text } : null;
   },
+  // Claude Code standalone sessions (~/.claude/projects/<slug>/<uuid>.jsonl) — one JSON object per line.
+  // Keep only type:"user"/"assistant". message.content is a STRING (user) or an ARRAY of blocks;
+  // textFromContent() keeps solely {type:"text"} blocks → thinking / tool_use / tool_result are dropped.
+  // Every other line type (queue-operation, attachment, ai-title, last-prompt, summary, mode, system, …) → ignored.
+  "claude-code"(o) {
+    if (o.type !== "user" && o.type !== "assistant") return null;
+    const text = textFromContent((o.message || {}).content);
+    return text ? { ts: o.timestamp, role: o.type, text } : null;
+  },
 };
 
 export function kindOf(file) {
@@ -95,12 +104,36 @@ export function kindOf(file) {
   return null;
 }
 
-// parse one transcript file from `fromLine` (0-based) → { units, lineCount }
-export function parseFile(file, fromLine = 0) {
-  const kind = kindOf(file);
-  if (!kind) return { units: [], lineCount: 0 };
+// Content-based detection (PURE — sample lines in, no fs): a .jsonl is Claude Code shaped when its
+// lines carry a top-level type of "user"/"assistant" WITH a message object. This distinguishes CC from
+// `archive` (type:"message") and `thread` (type:"user_message"/"decision"/…), which never match here.
+export function looksLikeClaudeCode(lines, sample = 50) {
+  let checked = 0;
+  for (const line of lines) {
+    if (!line || !line.trim()) continue;
+    let o; try { o = JSON.parse(line); } catch { continue; }
+    if (o && typeof o === "object" && (o.type === "user" || o.type === "assistant")
+        && o.message && typeof o.message === "object") return true;
+    if (++checked >= sample) break;
+  }
+  return false;
+}
+
+// parse one transcript file from `fromLine` (0-based) → { units, lineCount }.
+// `kindHint` (e.g. "claude-code" from --cc-dir discovery) overrides path/content detection.
+export function parseFile(file, fromLine = 0, kindHint = null) {
+  let kind = kindHint || kindOf(file);
+  let lines = null;
+  if (!kind) {
+    // content-based fallback: Claude Code shaped .jsonl not matched by any path rule
+    if (!file.endsWith(".jsonl")) return { units: [], lineCount: 0 };
+    lines = fs.readFileSync(file, "utf8").split("\n");
+    if (looksLikeClaudeCode(lines)) kind = "claude-code";
+    else return { units: [], lineCount: 0 };
+  }
   const parse = PARSERS[kind];
-  const lines = fs.readFileSync(file, "utf8").split("\n");
+  if (!parse) return { units: [], lineCount: 0 };
+  if (lines === null) lines = fs.readFileSync(file, "utf8").split("\n");
   const units = [];
   for (let i = fromLine; i < lines.length; i++) {
     if (!lines[i].trim()) continue;

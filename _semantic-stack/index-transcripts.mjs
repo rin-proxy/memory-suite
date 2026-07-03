@@ -32,13 +32,21 @@ const ccDir = val("--cc-dir", null);
 const ccWanted = ccDir != null || srcFilter === "cc" || srcFilter === "claude-code";
 const ccRoot = ccWanted ? (ccDir || CC_DEFAULT) : null;
 
-// Cross-platform via Node's `os` (Linux/macOS/BSD). The old /proc/meminfo + /proc/loadavg reads were
-// Linux-only and silently no-op'd on macOS/BSD — losing the anti-OOM guard there. os.freemem()/os.totalmem()
-// + os.loadavg() work everywhere. NOTE: on Linux os.freemem() ≈ MemFree (excludes reclaimable page cache),
-// so it reads lower than the old MemAvailable — the 350MB floor still holds, it just trips a touch earlier.
+// Cross-platform via Node's `os`. The old /proc reads were Linux-only (silently no-op on macOS/BSD).
+// CAVEAT: os.freemem() is NOT comparable across OSes. On Linux it ≈ MemFree (conservative but meaningful).
+// On macOS it counts only truly-free pages — macOS holds most RAM as reclaimable cache, so freemem reads
+// FAR below actually-available memory, and a fixed floor false-trips on essentially every run (exactly what
+// broke transcript indexing on macOS). So the floor is OS-aware + env-tunable:
+//   darwin → 0 (disabled; rely on the loadavg entry-guard + the OS memory manager/compressor)
+//   linux  → 350MB    ·    override either with TRANSCRIPT_MIN_FREE_MB=<mb>
+const MIN_FREE_MB = Number(process.env.TRANSCRIPT_MIN_FREE_MB) || (os.platform() === "darwin" ? 0 : 350);
 function memAvailMB() { return os.freemem() / (1024 * 1024); }
 // mid-run we ONLY guard memory (anti-OOM): embedding itself pegs the single core, so a load check mid-run would pause us on our own work.
-function memGuard() { const a = memAvailMB(); return a < 350 ? `free mem ${a.toFixed(0)}MB of ${(os.totalmem() / (1024 * 1024)).toFixed(0)}MB too low` : null; }
+function memGuard() {
+  if (MIN_FREE_MB <= 0) return null; // disabled (macOS default): freemem underreports available RAM there
+  const a = memAvailMB();
+  return a < MIN_FREE_MB ? `free mem ${a.toFixed(0)}MB of ${(os.totalmem() / (1024 * 1024)).toFixed(0)}MB too low` : null;
+}
 // ambient load matters only BEFORE we start (is something else hammering the box?).
 function entryGuard() {
   const load = os.loadavg()[0]; // 1-min load average (0 on platforms without support, e.g. Windows)

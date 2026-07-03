@@ -1,7 +1,7 @@
 ---
 name: cognitive-memory
 description: Give your AI agent a real long-term memory so you stop re-explaining yourself. It remembers what matters across sessions — decisions, preferences, facts — saves the important things as they come up, and finds them again in an instant with fast local search. Everything runs on your own machine (no cloud, your data stays private), and it can pull back details even after the conversation's context window was trimmed ("compacted"). Use when setting up agent memory, when the agent should remember or recall something, or to make it stop forgetting between sessions.
-version: 1.2.2
+version: 1.3.0
 metadata:
   openclaw:
     emoji: "🧠"
@@ -19,7 +19,7 @@ triggers:
   - "dig deeper"
 author: Rin
 license: UNLICENSED
-lastUpdated: 2026-07-02
+lastUpdated: 2026-07-03
 ---
 
 # Cognitive Memory System
@@ -101,7 +101,7 @@ node scripts/semantic/reconcile.mjs --file note.md --action-only                
 
 ## 💾 Save-by-default (real-time capture)
 
-Recall re-ranks and reconcile dedups; **save-by-default** is what gets the high-signal item into the curated store in the first place — in real time, as it's said. It is **Layer 1** of the capture design: **agent-driven and provider-free** — *you*, the agent already in the session, notice something worth keeping and write it. No cron, no heartbeat, no LLM/provider call does this for you (that's the deferred Layers 2–3). It complements `mdeep`'s raw-transcript net: transcripts catch *everything* said (noisy); save-by-default promotes the *load-bearing* items (decisions, preferences, milestones, corrections) into clean, fast-recall memory so they reliably survive.
+Recall re-ranks and reconcile dedups; **save-by-default** is what gets the high-signal item into the curated store in the first place — in real time, as it's said. It is **Layer 1** of the capture design: **agent-driven and provider-free** — *you*, the agent already in the session, notice something worth keeping and write it. No cron, no heartbeat, no LLM/provider call does this for you (Layers 2–3 add compaction capture + autonomous upkeep on top — see below). It complements `mdeep`'s raw-transcript net: transcripts catch *everything* said (noisy); save-by-default promotes the *load-bearing* items (decisions, preferences, milestones, corrections) into clean, fast-recall memory so they reliably survive.
 
 **Triggers — save the moment you see one** (save first, respond second):
 - An explicit **"remember this" / "save that" / "note that" / "for future reference"**.
@@ -115,6 +115,13 @@ scripts/save.sh --text '<the item>' [--type decision|preference|fact|correction|
 `save.sh` runs the **same** write-time reconcile above (skip near-dups · flag `review` on the ambiguous band · write when new/unavailable — **never blocks**), then writes a note with frontmatter (`type/date/tags/source: save-by-default`) into the right numbered store: `preference→00-core`, `decision|milestone→01-episodic`, `fact|correction→02-semantic`, untyped→`01-episodic`.
 
 **Honest scope:** this is a *discipline backed by a tool*, not an autonomous daemon — if you don't call `save.sh`, Layer 1 captures nothing; its reliability is the always-on habit plus the one-command tool. Full protocol (WHAT / WHEN / HOW, layer roadmap): **`references/save-by-default.md`**.
+
+## 🛡️ Capture Layers 2 & 3 — compaction capture + autonomous upkeep
+
+Save-by-default (Layer 1) is the real-time habit. Two more layers back it up so important things don't slip through — both **provider-free by default**:
+
+- **Layer 2 — compaction capture.** When the context window is about to be trimmed ("compacted"), a hook snapshots the rolling-off window straight into the *indexed* memory store (`memory/.compaction/`, so `msem`/`mdeep` see it) and queues the high-signal lines for you to promote via `save.sh`. Works on **OpenClaw** (`before_compaction` hook via `openclaw.plugin.json` + `hooks/compaction-capture/`) and **Claude Code** (`PreCompact` via `hooks/precompact-capture.sh`). The snapshot is pure code; deciding what to *keep* is agent-driven. If Rin's **smart-cache-pro** is also installed, this auto-detects its pre-compaction snapshot and writes a lightweight *reference* instead of duplicating it. Setup + both platforms: **`references/compaction-capture.md`**.
+- **Layer 3 — autonomous upkeep.** Optional cron (`install.sh --with-cron`) runs a light heartbeat (`scripts/heartbeat.sh`) + a nightly consolidation (`scripts/consolidate.sh`): dedup-flag, decay-prune (**moves** stale notes to `memory/.archive/`, never deletes), surface, reindex — all deterministic/provider-free. The "summarize / reflect" judgment is **opt-in** via `MEMORY_LLM_CMD` (any local LLM or agent command); unset, it queues a brief for the agent instead. No autonomous daemon ever calls a cloud provider. Details: **`references/autonomous-consolidation.md`**.
 
 ## Trigger System
 
@@ -131,6 +138,9 @@ scripts/save.sh --text '<the item>' [--type decision|preference|fact|correction|
 
 - `references/stores-and-audit.md` — Four-store architecture, full file tree, audit trail, key parameters
 - `references/operations.md` — Decay · Write-time reconciliation · Reflection · Identity · Multi-agent access (full procedures)
+- `references/save-by-default.md` — Layer 1: real-time capture protocol (what / when / how)
+- `references/compaction-capture.md` — Layer 2: compaction hooks (OpenClaw + Claude Code) + smart-cache-pro integration
+- `references/autonomous-consolidation.md` — Layer 3: heartbeat + nightly consolidation (deterministic + opt-in LLM)
 - `references/architecture.md` — Full design document (1200+ lines) · `references/routing-prompt.md` — LLM memory classifier · `references/reflection-process.md` — Reflection philosophy + internal-monologue format
 
 ## Troubleshooting

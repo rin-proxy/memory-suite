@@ -3,6 +3,15 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.7.0 (2026-07-03)
+
+Full anti-amnesia absorption (Layers 2 & 3) + a smart-cache-pro integration. memory-suite is now capture + recall + curation, end to end.
+
+- **feat (Layer 2 — compaction capture):** a hook snapshots the about-to-be-compacted window into the *indexed* memory store (`memory/.compaction/`, so `msem`/`mdeep` see it) and queues high-signal lines for the agent to keep via `save.sh`. OpenClaw (`before_compaction` via `cognitive-memory/openclaw.plugin.json` + `hooks/compaction-capture/`) and Claude Code (`PreCompact` via `hooks/precompact-capture.sh`). Snapshot = pure code; curating = agent-driven. New capture test (27 assertions).
+- **feat (Layer 3 — autonomous upkeep):** `scripts/heartbeat.sh` (light sweep) + `scripts/consolidate.sh` (nightly: dedup-flag, decay-prune to `memory/.archive/` — never deletes, surface, reindex) — all deterministic/provider-free — with an OPT-IN LLM step (`MEMORY_LLM_CMD`; unset ⇒ queue a brief for the agent). Optional crons via `install.sh --with-cron`. No autonomous daemon calls a provider.
+- **feat (smart-cache-pro integration):** Layer 2 auto-detects Rin's smart-cache-pro pre-compaction snapshot (CC `~/.claude/cache/compaction/`, OpenClaw `<ws>/memory/cache/.compaction/`, or `SMART_CACHE_DIR`) and writes a lightweight indexed *reference* stub instead of duplicating the verbatim window; self-snapshots when absent. One-way (does not modify smart-cache-pro).
+- cognitive-memory → **1.3.0** (capture Layers 1–3). All existing suites still green.
+
 ## 1.6.0 (2026-07-03)
 
 Anti-amnesia Layer 1 (save-by-default capture) + plain-English, benefit-led descriptions.

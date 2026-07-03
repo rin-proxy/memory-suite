@@ -1,0 +1,21 @@
+{
+  "id": "cognitive-memory",
+  "name": "Cognitive Memory",
+  "description": "Observe-only compaction-capture hook: snapshots the about-to-be-trimmed context window into the indexed memory store and queues high-signal items for the agent to curate. Never blocks compaction.",
+  "version": "1.2.2",
+  "activation": { "onStartup": false },
+  "hooks": [
+    {
+      "id": "compaction-capture",
+      "path": "hooks/compaction-capture",
+      "events": ["session:compact:before"]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean" }
+    }
+  }
+}

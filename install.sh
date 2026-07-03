@@ -15,8 +15,12 @@
 #                  claude-code also copies the 5 skills into $HOME/.claude/skills/ (so
 #                  Claude Code discovers them) and writes $WORKSPACE/{msem,mdeep} wrappers.
 #                  Same engine (semantic stack, node-llama-cpp, model, memory store) either way.
-#    --with-cron   ALSO install daily reindex crons in your LOCAL timezone
-#                  (OFF by default — nothing is scheduled unless you pass this).
+#    --with-cron   ALSO install the scheduled maintenance crons in your LOCAL timezone: the daily
+#                  reindex crons AND the Layer-3 autonomous-maintenance loop (a ~30-min heartbeat +
+#                  a nightly consolidate). Both are DETERMINISTIC + provider-free by default; the
+#                  nightly consolidation's LLM judgment step is OPT-IN via $MEMORY_LLM_CMD (unset ⇒
+#                  deterministic passes + a queue left for the agent). OFF by default — nothing is
+#                  scheduled unless you pass this. See references/autonomous-consolidation.md.
 #    --with-reranker  ALSO download the OPTIONAL cross-encoder reranker GGUF (~600MB) that powers
 #                  the off-by-default precision rerank stage (rerank.mjs). Default recall never
 #                  needs it; without it the reranker simply stays disabled. Enable at query time
@@ -161,7 +165,7 @@ say "   target    : $TARGET$([ "$TARGET" = claude-code ] && echo '  (skills → 
 say "   workspace : $WORKSPACE"
 say "   skills    : $(printf '%s ' $SUITE_SKILLS)"
 say "   model     : $MODEL_FILE  (downloaded, ~1.1GB — not bundled)"
-say "   cron      : $([ "$WITH_CRON" = true ] && echo 'will install (local TZ)' || echo 'skipped (pass --with-cron to enable)')"
+say "   cron      : $([ "$WITH_CRON" = true ] && echo 'will install: reindex + Layer-3 heartbeat/consolidate (local TZ)' || echo 'skipped (pass --with-cron to enable)')"
 say "   reranker  : $([ "$WITH_RERANKER" = true ] && echo 'will download (optional cross-encoder, ~600MB)' || echo 'skipped (off by default; pass --with-reranker)')"
 say "   sqlite-vec: $([ "$WITH_SQLITE_VEC" = true ] && echo 'will install (optional vector store: better-sqlite3 + sqlite-vec)' || echo 'skipped (off by default; pass --with-sqlite-vec)')"
 say ""
@@ -467,32 +471,64 @@ info "seeded companion flat-files if missing (active-tasks.md, last-conversation
 say ""
 
 # ---------------------------------------------------------------------------
-# 6. Optional: daily reindex crons (LOCAL timezone)  [--with-cron]
+# 6. Optional: scheduled maintenance crons (LOCAL timezone)  [--with-cron]
+#    Two independently-tagged groups, each idempotent:
+#      • memory-suite-reindex     — the daily semantic reindex (curated 03:30, transcripts 04:00).
+#      • memory-suite-consolidate — the Layer-3 autonomous-maintenance loop: a ~30-min heartbeat
+#        (light deterministic sweep) + a nightly consolidate (03:45, after the reindex). Both are
+#        DETERMINISTIC + PROVIDER-FREE by default; the nightly consolidate's LLM judgment step is
+#        OPT-IN via $MEMORY_LLM_CMD (unset ⇒ deterministic passes run + a queue is left for the agent).
+#    Nothing is scheduled unless --with-cron is passed. See references/autonomous-consolidation.md.
 # ---------------------------------------------------------------------------
 if [ "$WITH_CRON" = true ]; then
-  say "6) Installing daily reindex crons (local timezone)"
+  say "6) Installing scheduled maintenance crons (local timezone)"
   if ! command -v crontab >/dev/null 2>&1; then
     warn "crontab not found — skipping cron install (set up scheduling with your platform's tool)."
   else
-    NODE_BIN="$(command -v node)"   # resolved from PATH, never a hardcoded absolute
+    NODE_BIN="$(command -v node)"          # resolved from PATH, never a hardcoded absolute
+    NODE_DIR="$(dirname "$NODE_BIN")"       # put node on PATH for the bash consolidate/heartbeat crons
     SEM="$WORKSPACE/scripts/semantic"
+    CM_SCRIPTS="$SKILLS_DEST/cognitive-memory/scripts"   # installed skill scripts (heartbeat/consolidate)
+    L3_LOGDIR="$WORKSPACE/memory/.consolidation"
+    mkdir -p "$L3_LOGDIR"                    # cron redirect targets must exist before first run
     TZ_NAME="$(cat /etc/timezone 2>/dev/null || date +%Z 2>/dev/null || echo 'system-local')"
+
+    # --- group 1: daily reindex (unchanged behavior) -------------------------------------------------
     # 03:30 local — curated incremental reindex;  04:00 local — transcript incremental reindex.
     CRON_CURATED="30 3 * * * cd $SEM && $NODE_BIN index.mjs --incremental >> $WORKSPACE/memory/.semantic/reindex.log 2>&1"
     CRON_TRANSCRIPTS="0 4 * * * cd $SEM && $NODE_BIN index-transcripts.mjs --incremental --src all --max 150 >> $WORKSPACE/memory/.semantic/transcripts/reindex.log 2>&1"
-    TAG="# memory-suite-reindex"
+    TAG_REINDEX="# memory-suite-reindex"
+
+    # --- group 2: Layer-3 autonomous-maintenance loop (deterministic + provider-free by default) ------
+    # Heartbeat every 30 min (light sweep) · consolidate 03:45 local (nightly, after the 03:30 reindex).
+    # PATH carries node for the bash scripts; MEMORY_LLM_CMD (if exported in the cron env) enables the
+    # opt-in LLM judgment step — otherwise the nightly run leaves a queue for the agent.
+    CRON_HEARTBEAT="*/30 * * * * PATH=\"$NODE_DIR:\$PATH\" OPENCLAW_WORKSPACE=\"$WORKSPACE\" bash \"$CM_SCRIPTS/heartbeat.sh\" >> $L3_LOGDIR/heartbeat.log 2>&1"
+    CRON_CONSOLIDATE="45 3 * * * PATH=\"$NODE_DIR:\$PATH\" OPENCLAW_WORKSPACE=\"$WORKSPACE\" bash \"$CM_SCRIPTS/consolidate.sh\" >> $L3_LOGDIR/consolidate.log 2>&1"
+    TAG_L3="# memory-suite-consolidate"
+
     EXISTING="$(crontab -l 2>/dev/null || true)"
-    if printf '%s\n' "$EXISTING" | grep -qF "$TAG"; then
-      info "memory-suite cron entries already present — leaving as-is (idempotent)"
-    else
-      {
-        printf '%s\n' "$EXISTING"
-        printf '%s %s\n' "$CRON_CURATED" "$TAG"
-        printf '%s %s\n' "$CRON_TRANSCRIPTS" "$TAG"
-      } | crontab -
-      info "installed 2 crons (curated 03:30, transcripts 04:00 — your local time, $TZ_NAME)"
-      info "note: cron runs in the system's local timezone; adjust the hours if you want a different off-peak window."
+    NEW="$EXISTING"; added_reindex=false; added_l3=false
+    if ! printf '%s\n' "$EXISTING" | grep -qF "$TAG_REINDEX"; then
+      NEW="$(printf '%s\n%s %s\n%s %s' "$NEW" "$CRON_CURATED" "$TAG_REINDEX" "$CRON_TRANSCRIPTS" "$TAG_REINDEX")"
+      added_reindex=true
     fi
+    if ! printf '%s\n' "$EXISTING" | grep -qF "$TAG_L3"; then
+      NEW="$(printf '%s\n%s %s\n%s %s' "$NEW" "$CRON_HEARTBEAT" "$TAG_L3" "$CRON_CONSOLIDATE" "$TAG_L3")"
+      added_l3=true
+    fi
+    if [ "$added_reindex" = true ] || [ "$added_l3" = true ]; then
+      printf '%s\n' "$NEW" | crontab -
+      [ "$added_reindex" = true ] && info "installed reindex crons (curated 03:30, transcripts 04:00 — local $TZ_NAME)"
+      [ "$added_l3" = true ]      && info "installed Layer-3 crons (heartbeat every 30 min, consolidate 03:45 — local $TZ_NAME)"
+      info "note: cron runs in the system's local timezone; adjust the hours if you want a different off-peak window."
+    else
+      info "memory-suite cron entries already present — leaving as-is (idempotent)"
+    fi
+    info "Layer-3 consolidation is DETERMINISTIC + provider-free by default. To enable the OPT-IN LLM"
+    info "judgment step, export MEMORY_LLM_CMD (a shell command the nightly consolidate pipes a prompt"
+    info "to) in the cron environment; unset ⇒ deterministic passes run + a queue is left for the agent."
+    info "Details: cognitive-memory/references/autonomous-consolidation.md"
   fi
   say ""
 fi

@@ -3,6 +3,21 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.1.0 (2026-07-03)
+
+Claude Code support + install-correctness fixes (surfaced while installing the bundle on macOS / Claude Code).
+
+- **feat:** Claude Code transcript support for `mdeep` — a `claude-code` JSONL parser (extracts user +
+  assistant text; drops thinking/tool_use/tool_result; strips CC system wrappers; honors `<NO-RECALL>`),
+  `--cc-dir` / `--src cc` discovery, and `cc-<slug>-<YYYY-MM>` sharding (so `mdeep --src cc` works with no
+  `deep.mjs` change). New `test-cc.mjs` (16 tests). The suite now indexes both OpenClaw and Claude Code history.
+- **fix:** corrected the embedding-model `MODEL_SHA256` pin to the actual pinned-HF-revision file — the
+  previous value came from a divergent copy, so **every clean install failed model verification**.
+- **fix(macOS):** the transcript indexer's resource guards were tuned for a 1-core VPS and false-tripped on
+  Macs, so transcript indexing never ran there. The memory guard is now OS-aware + env-tunable
+  (`os.freemem()` underreports available RAM on macOS → `TRANSCRIPT_MIN_FREE_MB`, darwin default off), and
+  the load guard scales by core count (`TRANSCRIPT_MAX_LOAD`; 1 core → 2.5, preserving old behavior).
+
 ## 1.0.0 (2026-07-03)
 
 First release packaged as a standalone, git-ready bundle repo.

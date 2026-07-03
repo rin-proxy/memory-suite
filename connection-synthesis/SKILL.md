@@ -10,7 +10,7 @@ metadata:
     emoji: "🔗"
     requires:
       bins: ["bash", "node"]
-      stack: "semantic search (scripts/semantic/msem)"
+      stack: "semantic search + link layer (scripts/semantic/{msem,links.mjs})"
 triggers:
   - "find connections"
   - "synthesize insights"
@@ -29,8 +29,9 @@ between them.** Recall finds what you ask for. Synthesis finds what you didn't k
 ## 🔗 The flow
 
 1. **Seed** — a note, theme, or this week's captures. The thing you want to think *outward* from.
-2. **Pull across domains** — `find-connections.sh` runs `msem` (semantic search over memory) and
-   surfaces the most-related notes from **different** domains than the seed, as candidate clusters.
+2. **Pull across domains** — `find-connections.sh` builds a provider-free **link layer** (`links.mjs`)
+   over memory and ranks with **MMR diversity** (relevance − λ·redundancy) to surface memories that are
+   *relevant to the seed yet dissimilar to each other* — the cross-domain material, not near-duplicates.
    Matching by *meaning* (across languages) puts far-apart notes side by side — the whole point.
 3. **Synthesize** (your job) — judge which candidate links are *real*: one of the four strong types
    (principle · contradiction · pattern · answered-question). Restating a note is not a connection.
@@ -52,9 +53,17 @@ between them.** Recall finds what you ask for. Synthesis finds what you didn't k
 
 If you file by **topic**, related ideas from different domains never meet. Capture by **type** as well
 (`patterns`, `questions`, `numbers`) and a market pattern and a behavioral pattern land in the same
-place — then a semantic engine bridges them automatically. **Type-based capture + semantic search =
-surfaced connections.** Two notes that quietly contradict each other, a March question a May note
-accidentally answers — that tension is where rethinking happens, and nobody was looking across both.
+place — then the link layer bridges them by *meaning*, not by folder. Two notes that quietly contradict
+each other, a March question a May note accidentally answers — that tension is where rethinking happens,
+and nobody was looking across both.
+
+**How the bridge is built (provider-free, no LLM).** `links.mjs` links memory chunks from pure-code
+signals: **semantic similarity** in the related-but-distinct band (above a floor, *below* near-duplicate —
+a near-copy is redundancy, not a connection), and **temporal proximity** (written close in time). Shared
+**named entities** are an *optional* extra the running agent can supply; base auto-linking works without
+them. Then **MMR** (relevance − λ·redundancy) deliberately picks memories relevant to the seed yet
+*dissimilar* to each other — which is what makes them cross-domain. Two `type:pattern` notes bridging
+market and behavior now surface *together* (the old "same type ⇒ same domain, demote" heuristic is gone).
 
 ## ✅ When to use
 

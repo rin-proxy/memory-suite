@@ -13,16 +13,34 @@ That is the unlock: **type-based capture + semantic search = surfaced connection
 
 ## Pull candidates across domains (the engine)
 
-You don't hunt connections by hand. `find-connections.sh` runs the semantic helper:
+You don't hunt connections by hand. `find-connections.sh` builds a provider-free **link layer**
+(`links.mjs`) over memory and selects candidates by **MMR diversity**:
 
 ```bash
-./scripts/semantic/msem "<a theme from this week>" 12
+./scripts/find-connections.sh "<a theme from this week>" 12
 ```
 
-Because it matches by *meaning* (and across languages), it surfaces the far-apart notes a human — or a
-keyword search — would never put side by side. The script then buckets the results by domain and
-foregrounds the ones from a **different** domain than the seed: that cross-domain set is the raw
-material. Same-domain hits are usually "both mention X" noise — context at best.
+**What the link layer is (A-MEM-style — no LLM, no cloud, no network).** `links.mjs` links memory
+chunks from pure-code signals over the existing index vectors:
+
+- **Semantic similarity** in the *related-but-distinct* band — cosine ≥ a floor (**0.35**; below =
+  unrelated) but *below* a near-duplicate ceiling (**0.85**; at/above = a near-copy, i.e. redundancy,
+  not a connection — that's the write-time reconciler's job, so it is excluded here).
+- **Temporal proximity** — written within **~14 days** of each other (from each note's `date`).
+- **Shared named entities** — *optional*. The running agent may attach `entities` to chunks; base
+  auto-linking runs on **similarity + temporal alone** and needs nothing from a model.
+
+**Why MMR, not top-k.** Plain top-k similarity just returns the nearest copies of the seed —
+restatements, not insight. Candidates are instead ranked by **MMR**:
+`score = relevance(seed) − λ·redundancy`, with **λ = 0.5** and *redundancy* = the highest cosine to an
+already-picked candidate. That penalty deliberately promotes memories that are relevant to the seed yet
+*dissimilar to each other* — the cross-domain raw material. Matching by *meaning* (and across
+languages) then puts far-apart notes side by side. **`type` is only a display label — it never gates a
+candidate** (the old "same `type` ⇒ same domain, demote" heuristic contradicted this skill's own thesis
+and is gone: two `type:pattern` notes bridging market + behavior now surface together).
+
+If Node or the local embedding model isn't present, `find-connections.sh` degrades gracefully to a plain
+most-related listing from `msem` — you just judge cross-domain-ness by hand.
 
 ## What makes a REAL insight (the four types)
 

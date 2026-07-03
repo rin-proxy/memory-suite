@@ -3,6 +3,22 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.4.0 (2026-07-03)
+
+Cross-domain CONNECT (entity/link layer), a retrieval eval harness, and the reranker model pinned.
+
+- **feat:** entity/link layer (`links.mjs`, A-MEM-style) for connection-synthesis — auto-links memories by
+  semantic similarity (related-but-distinct band 0.35–0.85), temporal proximity (14d), and optional agent-supplied
+  entities, with **MMR diversity** (λ=0.5) to surface relevant-but-DISSIMILAR (cross-domain) memories. Replaces
+  `find-connections.sh`'s broken "domain = `type`" heuristic (also fixed a bash-4-only `mapfile` → bash-3.2-safe).
+  New `test-links.mjs` (21 tests). Auto-linking is pure code (no provider); entity links are agent-driven/optional.
+- **feat:** local **eval harness** (`_semantic-stack/eval/`) — pure IR metrics (recall@k, precision@k, MRR, nDCG@k),
+  a runner mirroring the retrieval pipeline with an **A/B mode** (baseline vs decay/rerank, with Δ), synthetic fixtures
+  that run model-free (keyword mode), and verified LoCoMo/LongMemEval fetch+convert recipes. New `test-metrics.mjs`
+  (18 tests). Measured on the fixture: decay gives recall@2 **+0.10**.
+- **feat:** the optional reranker model is now **integrity-pinned** — `RERANKER_SHA256` set
+  (`bge-reranker-v2-m3-Q8_0.gguf`, verified end-to-end), so `install.sh --with-reranker` is checked like the embedder.
+
 ## 1.3.0 (2026-07-03)
 
 Two provider-free retrieval upgrades — write-time reconciliation, and an optional cross-encoder reranker.

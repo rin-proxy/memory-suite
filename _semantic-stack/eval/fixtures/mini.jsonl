@@ -1,0 +1,9 @@
+# mini.jsonl — tiny SYNTHETIC labeled dataset for the eval harness.
+# One JSON object per line: { "query": "...", "relevant": ["id", ...] }.
+# `relevant` lists the corpus ids (see mini-corpus.jsonl) that SHOULD be retrieved for the query.
+# Lines beginning with # and blank lines are ignored.
+{"query":"What language should the agent reply in and can it use emojis?","relevant":["m01","m07"]}
+{"query":"Where do code projects live on disk?","relevant":["m03"]}
+{"query":"What is the agent-cockpit?","relevant":["m02"]}
+{"query":"How does the reranker relate to fusion and decay?","relevant":["m08","m09"]}
+{"query":"benchmarks for scoring long-term memory recall","relevant":["m06"]}

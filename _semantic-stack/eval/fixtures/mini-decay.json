@@ -1,0 +1,8 @@
+{
+  "_comment": "Synthetic decay store (decay.mjs format) for demoing --ab decay on the mini fixture. Date-independent: uses importance/access only (no lastAccessMs), so factors are deterministic. m11 is a keyword-magnet glossary DECOY (relevant to no query) → low importance demotes it (factor→0.3 floor), surfacing the substantive note m09 for the 'reranker vs fusion/decay' query. m07 is boosted (factor→1.5 ceiling); harmless in keyword mode (its keyword score is 0) but lifts it into top-k under semantic/hybrid, where it is the second relevant answer for the language query.",
+  "version": 1,
+  "entries": {
+    "m11": { "access": 0, "importance": 0.1 },
+    "m07": { "access": 5, "importance": 0.9 }
+  }
+}

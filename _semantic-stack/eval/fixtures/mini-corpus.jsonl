@@ -1,0 +1,14 @@
+# mini-corpus.jsonl — tiny SYNTHETIC corpus for the eval harness (no real user data).
+# One JSON object per line: { "id", "text", "type"?, "date"? }. The `id` is the memory id that a
+# dataset's `relevant` array refers to (mirrors how msem/mdeep key memories by file rel-path).
+{"id":"m01","text":"Rin prefers to reply in Indonesian and never uses emojis in UI text or interface labels.","type":"core","date":"2026-06-01"}
+{"id":"m02","text":"The agent-cockpit project is a local macOS Electron app that commands a multi-agent Claude SDK team.","type":"project","date":"2026-06-10"}
+{"id":"m03","text":"Code projects live under the Developer directory. The Desktop only holds Projects, Notes, and Screenshots.","type":"procedural","date":"2026-06-02"}
+{"id":"m04","text":"smart-cache-pro compresses large Bash command output and snapshots the context before compaction.","type":"note","date":"2026-06-15"}
+{"id":"m05","text":"The morning briefing surfaces focus, open loops, what we left off, and system health from memory.","type":"procedural","date":"2026-06-20"}
+{"id":"m06","text":"LoCoMo and LongMemEval are long-term conversational memory benchmarks used to score retrieval recall.","type":"semantic","date":"2026-06-22"}
+{"id":"m07","text":"Rin is an Indonesian-speaking crypto and blockchain builder shipping OpenClaw skills.","type":"core","date":"2026-06-05"}
+{"id":"m08","text":"The reranker is an optional cross-encoder stage that runs after fusion and decay, and is off by default.","type":"semantic","date":"2026-06-25"}
+{"id":"m09","text":"Decay multiplies each candidate fusion score by a recency, access-frequency, and importance factor.","type":"semantic","date":"2026-06-26"}
+{"id":"m10","text":"The weekly connection pass finds cross-domain links between notes to synthesize a new written insight.","type":"procedural","date":"2026-06-28"}
+{"id":"m11","text":"Glossary stub listing the terms fusion, decay, reranker, and recall as a placeholder with no real explanation.","type":"cache","date":"2026-01-05"}

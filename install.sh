@@ -106,7 +106,7 @@ RERANKER_REVISION="3093af03b1a635e67b084b1d8c03c5f5e020fd05"   # pinned immutabl
 RERANKER_URL="https://huggingface.co/${RERANKER_REPO}/resolve/${RERANKER_REVISION}/${RERANKER_FILE}"
 # Blank ⇒ integrity is UNVERIFIED and a loud warning is printed (this is an opt-in extra, so a blank
 # pin does NOT abort — unlike the required embedding model above). Set to enforce sha256 verification.
-RERANKER_SHA256=""
+RERANKER_SHA256="a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
 
 NLC_VERSION="^3.18.1"   # node-llama-cpp — the native embedding + reranking runtime
 

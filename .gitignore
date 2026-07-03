@@ -16,3 +16,6 @@ node_modules/
 # Guards against accidentally tracking data if a workspace is created in-tree.
 memory/.semantic/*.lock
 memory/**/*.lock
+
+# generated eval reports (overwritten each run)
+_semantic-stack/eval/reports/

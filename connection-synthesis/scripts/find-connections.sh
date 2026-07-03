@@ -1,57 +1,65 @@
 #!/usr/bin/env bash
 # find-connections.sh — surface CANDIDATE cross-domain connections for the agent to synthesize.
-# It does NOT write the insight. It pulls the most related notes from DIFFERENT domains than the
-# seed (via msem, the semantic engine) and prints them as candidate pairs/clusters + a synthesis
-# prompt. You (the LLM) judge which links are real and write the connection note.
+# It does NOT write the insight. It builds a PROVIDER-FREE link layer over memory (links.mjs) and ranks
+# with MMR diversity (relevance − λ·redundancy) to surface memories that are RELATED-BUT-DISSIMILAR to the
+# seed — the cross-domain raw material a plain top-k similarity search (or a human) would never put side by
+# side. You (the LLM) judge which links are real and write the connection note.
 # Usage:  ./find-connections.sh "<seed note/topic>" [k]      (k = how many candidates, default 12)
-set -euo pipefail
+# Portable: bash 3.2-safe (no mapfile); resolves links.mjs/msem under $OPENCLAW_WORKSPACE; degrades gracefully.
+set -uo pipefail   # deliberately NO -e: a soft failure should DEGRADE (fall back), not abort the pass.
 
-usage() { sed -n '2,8p' "$0"; }
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
+usage() { sed -n '2,9p' "$0"; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 SEED="${1:-}"
-[[ -z "$SEED" ]] && { echo "Error: a seed note/topic is required." >&2; usage; exit 1; }
+if [ -z "$SEED" ]; then echo "Error: a seed note/topic is required." >&2; usage; exit 1; fi
 K="${2:-12}"
 
 WS="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
-MSEM="$WS/scripts/semantic/msem"
-[[ -x "$MSEM" ]] || { echo "Error: semantic stack not found at $MSEM (the semantic helper 'msem' must be present)." >&2; exit 1; }
-
-# Pull related notes by MEANING. Drop the node/runtime banner lines; keep result + snippet lines.
-RAW=$("$MSEM" "$SEED" "$K" 2>/dev/null | grep -vE '^\[node-llama-cpp\]')
-
-# Parse each result line:  "  rrf X | sem Y | kw Z | [TYPE]  path:line"
-#   -> TYPE = domain bucket,  PATH = note.  We group candidates by domain and EXCLUDE the seed's
-#   own domain so what's left is genuinely cross-domain raw material.
-mapfile -t HITS < <(printf '%s\n' "$RAW" | grep -oE '\[[a-z0-9-]+\][[:space:]]+[A-Za-z0-9_./-]+\.md' \
-                    | sed -E 's/\][[:space:]]+/]\t/' | awk -F'\t' '!seen[$2]++{print $1"\t"$2}')
-
-[[ ${#HITS[@]} -eq 0 ]] && { echo "No related notes found for: \"$SEED\". Try a broader theme or raise k."; exit 0; }
-
-# The top hit's domain is treated as the seed's home domain (most-related = where the seed lives).
-HOME_DOMAIN=$(printf '%s\n' "${HITS[0]}" | cut -f1)
+SEM="$WS/scripts/semantic"
+LINKS="$SEM/links.mjs"
+MSEM="$SEM/msem"
 
 echo "🔗 Connection candidates for seed: \"$SEED\""
-echo "   engine: msem (semantic) · k=$K · home domain ≈ $HOME_DOMAIN  (cross-domain links are the interesting ones)"
-echo
 
-cross=0; home=0
-echo "── Cross-domain candidates (different domain than the seed — synthesize THESE) ──"
-for h in "${HITS[@]}"; do
-  dom=$(printf '%s\n' "$h" | cut -f1); path=$(printf '%s\n' "$h" | cut -f2)
-  if [[ "$dom" != "$HOME_DOMAIN" ]]; then echo "   • $dom  ${path#"$WS"/}"; cross=$((cross+1)); fi
-done
-[[ $cross -eq 0 ]] && echo "   (none — every related note shares the seed's domain; broaden the seed or raise k)"
+# ── Preferred path: provider-free link layer + MMR diversity (links.mjs) ──────────────────────────────
+# "Cross-domain" here means RELEVANT to the seed yet DISSIMILAR from the other picks (MMR selection) —
+# NOT the old heuristic of "a different `type` field", which wrongly demoted two type:pattern notes that
+# bridged market+behavior. links.mjs emits TSV:  path:line <TAB> type <TAB> rel <TAB> reason.
+CROSS=""
+if command -v node >/dev/null 2>&1 && [ -f "$LINKS" ]; then
+  CROSS="$(node "$LINKS" --seed "$SEED" --k "$K" --ws "$WS" --tsv 2>/dev/null || true)"
+fi
 
-echo
-echo "── Same-domain (context only — usually 'both mention X', not a strong link) ──"
-for h in "${HITS[@]}"; do
-  dom=$(printf '%s\n' "$h" | cut -f1); path=$(printf '%s\n' "$h" | cut -f2)
-  if [[ "$dom" == "$HOME_DOMAIN" ]]; then echo "   • $dom  ${path#"$WS"/}"; home=$((home+1)); fi
-done
+if [ -n "$CROSS" ]; then
+  echo "   engine: links.mjs (semantic link layer · MMR diversity) · k=$K  (dissimilar-but-relevant = the interesting ones)"
+  echo
+  echo "── Diverse cross-domain candidates (relevant to the seed yet distinct from each other — synthesize THESE) ──"
+  printf '%s\n' "$CROSS" | while IFS="$(printf '\t')" read -r loc typ rel reason; do
+    [ -z "$loc" ] && continue
+    printf '   • [%s] rel %s  %s\n       %s\n' "${typ:-note}" "${rel:-?}" "${loc#"$WS"/}" "$reason"
+  done
+  echo
+else
+  # ── Fallback: link layer unavailable (no node / no model / links.mjs absent / empty index) ──────────
+  # Best-effort so the pass still has raw material. We do NOT fake "domain" from `type`; you judge
+  # cross-domain-ness yourself from the notes below.
+  echo "   engine: fallback (link layer unavailable) — most-related notes via msem"
+  echo
+  echo "── Related notes (fallback — judge cross-domain-ness yourself) ──"
+  if command -v node >/dev/null 2>&1 && [ -x "$MSEM" ]; then
+    "$MSEM" "$SEED" "$K" 2>/dev/null \
+      | grep -vE '^\[node-llama-cpp\]' \
+      | grep -oE '\[[a-z0-9-]+\][[:space:]]+[A-Za-z0-9_./-]+\.md:[0-9]+' \
+      | while IFS= read -r line; do printf '   • %s\n' "${line#"$WS"/}"; done
+  else
+    echo "   (need Node + the semantic stack under $SEM — none found; install the suite to enable synthesis)"
+  fi
+  echo
+fi
 
-echo
+# ── The agent's job: synthesize (the tool surfaces; you synthesize) ───────────────────────────────────
 echo "── Now synthesize (the agent's job) ──"
-echo "Read the cross-domain candidates above. Look for ONE of the four strong connection types:"
+echo "Read the candidates above. Look for ONE of the four strong connection types:"
 echo "   A·Principle      same underlying principle in two different domains"
 echo "   B·Contradiction  two notes in genuine tension (interesting, not trivial)"
 echo "   C·Pattern        3+ notes that together form one unnamed insight"

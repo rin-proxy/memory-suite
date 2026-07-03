@@ -1,6 +1,6 @@
 {
   "name": "memory-suite",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "The 5-skill OpenClaw Memory Suite packaged as one bundle sharing a single local semantic engine (arctic-embed via node-llama-cpp; msem/mdeep search).",
   "skills": ["cognitive-memory", "smart-distill", "connection-synthesis", "morning-briefing", "proactive-partner"]
 }

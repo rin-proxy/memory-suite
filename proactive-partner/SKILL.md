@@ -1,7 +1,7 @@
 ---
 name: proactive-partner
 description: Make your agent proactive instead of just reactive. It scans your open work and memory for high-value things you didn't ask about — stalled tasks, lessons you never acted on, jobs failing silently — and proposes them with reasoning, always leaving the final call to you. Use when the agent should anticipate what's useful or surprise you with something worth doing.
-version: 1.0.0
+version: 1.1.0
 metadata:
   openclaw:
     emoji: "🔭"
@@ -32,11 +32,17 @@ Most "be proactive" prompts are vibes. This one is **operational**: it *scans* f
 
 ## ♻️ The proactive loop
 
-1. **Scan** — `proactive-scan.sh` → real opportunities: unaddressed learnings · stalled work · **silently-failing crons** · memory debt.
+1. **Scan** — `proactive-scan.sh` → real opportunities: unaddressed learnings · stalled work · **silently-failing crons** · memory debt · **engine-upgrade advisories** (provider-free, approval-gated).
 2. **Recall** ★ — for each, run `mdeep "<topic>" 4` (total recall) to ground it in what the human said/decided before. *This is the reverse-prompting engine — proposals rooted in real context, not generic guesses.*
 3. **Propose** — 1–3 highest-leverage items, framed as "I noticed X — want me to do Y?". Build drafts.
 4. **Verify (rigor)** — sanity-check before proposing; for genuinely high-stakes proposals, escalate to **`deep-orchestrator`** for adversarial verification (don't propose confidently-wrong work).
 5. **Guardrail** — draft emails, don't send · build tools, don't deploy · create content, don't publish. **Nothing external without approval.**
+
+## 🔧 Engine-upgrade advisories
+
+The scan also runs a **provider-free** upgrade advisor (`scripts/upgrade-advisor.sh`) that detects when one of Memory Suite's optional install flags would now help — `--with-cron` (recall missing recent memories / no reindex cron), `--with-sqlite-vec` (corpus large enough that queries get slow + heavy), `--with-reranker` (large corpus wants sharper top results). Detection is pure code — no model, no network. The **install is not automatic**: treat each advisory like any other opportunity — surface it with the exact command, and run `install.sh --with-…` **only after the human approves. The agent proposes, the user approves, nothing is ever auto-installed.**
+
+→ Triggers, thresholds, the provider-free detection + the no-auto-install contract: [`references/upgrade-advisor.md`](references/upgrade-advisor.md)
 
 ## 💪 Why this beats a generic proactive skill
 

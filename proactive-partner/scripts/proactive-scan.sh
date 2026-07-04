@@ -45,5 +45,17 @@ echo; echo "## 🧹 Memory hygiene"
 und=$(ls "$M"/2026-*.md 2>/dev/null | grep -vc synthesis || echo 0)
 (( und>0 )) && echo "- ${und} raw daily note(s) — curate the un-synthesized ones into stores"
 
+# ── Engine upgrades (best-effort, guarded) ──────────────────────────────────
+# The PROVIDER-FREE upgrade-advisor detects when an OPTIONAL install flag would now help
+# (--with-cron / --with-sqlite-vec / --with-reranker) and prints an "Engine upgrades available"
+# section with the exact, APPROVAL-GATED install command. It only DETECTS + RECOMMENDS — it never
+# installs anything. Surface it as a proposal; the human approves; then (and only then) install.sh
+# runs. Nothing prints if no upgrade is warranted. See references/upgrade-advisor.md.
+_here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [[ -f "$_here/upgrade-advisor.sh" ]]; then
+  _adv="$(bash "$_here/upgrade-advisor.sh" "$WS" 2>/dev/null || true)"
+  [[ -n "$_adv" ]] && { echo; printf '%s\n' "$_adv"; }
+fi
+
 echo; echo "## ▶️ Reverse-prompting (the differentiator)"
 echo "_For each real opportunity above, run:  mdeep \"<the topic>\" 4  → ground ONE concrete proposal in what the human actually cares about. Propose 1–3, highest-leverage first. Draft it; never ship external without approval._"

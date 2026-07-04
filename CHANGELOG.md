@@ -3,6 +3,16 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.8.0 (2026-07-04)
+
+Proactive upgrade advisor — the agent offers the right optional flag when it would actually help (approval-gated, never auto-installs).
+
+- **feat:** `proactive-partner/scripts/upgrade-advisor.sh` — provider-free detection of when the optional install flags would help, folded into `proactive-partner`'s scan as an "Engine upgrades available" section:
+  - `--with-cron` when new memories are unindexed or no reindex cron is scheduled (staleness);
+  - `--with-sqlite-vec` when the index passes ~8000 chunks and the deps aren't installed (scale);
+  - `--with-reranker` (softer suggestion) when the corpus is large (~2000+) and the reranker model is absent (precision).
+  Each recommendation carries the reason, measured-vs-threshold, and the exact command; thresholds are env-tunable; every check is guarded (no index/crontab/deps ⇒ skip). **Approval-gated:** the agent proposes, the user approves, then it runs `install.sh --with-…` — nothing is ever auto-installed. New `test-upgrade-advisor.mjs` (36 assertions). proactive-partner → 1.1.0.
+
 ## 1.7.1 (2026-07-04)
 
 - **docs:** corrected the install instructions — this is a **bundle** (5 skills + a shared engine + a downloaded

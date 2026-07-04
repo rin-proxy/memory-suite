@@ -3,6 +3,13 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.7.1 (2026-07-04)
+
+- **docs:** corrected the install instructions — this is a **bundle** (5 skills + a shared engine + a downloaded
+  model), installed via `git clone … && bash install.sh`, **not** `openclaw skills install git:…` (that command
+  only handles a single-skill repo with a root `SKILL.md`, and would skip the engine build + model download, so
+  recall wouldn't work). Fixed the misleading one-liner in the "Why install it" + "Platforms" sections.
+
 ## 1.7.0 (2026-07-03)
 
 Full anti-amnesia absorption (Layers 2 & 3) + a smart-cache-pro integration. memory-suite is now capture + recall + curation, end to end.

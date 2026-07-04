@@ -21,7 +21,7 @@ In one line: long-term memory + instant recall for your agent — so it stops fo
 
 **If you use Claude Code** — give your local Claude Code a memory that persists across sessions: it recalls past decisions and can search your entire Claude Code history to answer questions like "what did we decide about X three weeks ago?". Everything is indexed locally, and secrets are stripped before indexing. Install with `install.sh --target claude-code`.
 
-**If you run an OpenClaw agent** — drop in the full memory stack as five skills sharing one engine: the agent remembers across restarts, survives context compaction, keeps its own memory tidy, and can brief you each day. Install with `install.sh` (or `openclaw skills install git:OWNER/REPO`).
+**If you run an OpenClaw agent** — drop in the full memory stack as five skills sharing one engine: the agent remembers across restarts, survives context compaction, keeps its own memory tidy, and can brief you each day. Install with `git clone … && bash install.sh` — it's a bundle set up by its own installer (see Platforms below).
 
 Same engine, both platforms, all local and private.
 
@@ -77,12 +77,22 @@ The bundle is **dual-platform**: the *same* local engine (arctic-embed via `node
 always **local, private, and redacted before embedding** — secrets are scrubbed on the way into the index,
 and no cloud API is called on either platform.
 
+> **This is a bundle** (5 skills + a shared local engine + a downloaded model), **not** a single-skill repo.
+> Install it with its own **`install.sh`** — **not** `openclaw skills install git:…`. That command only handles a
+> single-skill repo with a root `SKILL.md`; this repo has none (5 skills live in subfolders), and it would skip
+> the engine build + the ~1GB model download, so recall wouldn't work. First clone it:
+>
+> ```bash
+> git clone https://github.com/rin-proxy/memory-suite.git && cd memory-suite
+> ```
+
 **OpenClaw** (default target):
 
 ```bash
-openclaw skills install git:rin-proxy/memory-suite      # via the OpenClaw skill registry
-# — or install straight into a workspace (default: $OPENCLAW_WORKSPACE, else ~/.openclaw/workspace):
-bash install.sh [WORKSPACE]
+bash install.sh [WORKSPACE]      # default workspace: $OPENCLAW_WORKSPACE, else ~/.openclaw/workspace
+# then build the first index + reload the gateway:
+cd "${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}/scripts/semantic" && node index.mjs
+openclaw gateway restart
 ```
 
 **Claude Code:**

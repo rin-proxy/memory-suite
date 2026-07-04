@@ -3,6 +3,13 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.8.1 (2026-07-04)
+
+Install fixes surfaced by re-running `install.sh` end-to-end against a Claude Code target.
+
+- **fix (install-breaking):** step 2 copied the semantic stack with `cp -f`, which **fails on the `eval/` subdirectory** (added in 1.4.0) — aborting every fresh `install.sh` at "installing semantic stack". Now copies directories recursively (`cp -Rf`, rm-first so re-runs stay idempotent). This had broken every clean install since 1.4.0 (undetected because updates went via file-sync, not a full install).
+- **fix (claude-code transcript cron):** the transcript-reindex cron used `--src all` with no `--cc-dir`, so on a Claude Code install it matched no sources and indexed zero CC sessions. The cron is now target-aware — `--cc-dir "$HOME/.claude/projects"` for claude-code, `--src all` for openclaw.
+
 ## 1.8.0 (2026-07-04)
 
 Proactive upgrade advisor — the agent offers the right optional flag when it would actually help (approval-gated, never auto-installs).

@@ -222,10 +222,11 @@ if [ "$MODEL_ONLY" = false ]; then
   [ -d "$STACK_SRC" ] || die "missing $STACK_SRC (run install.sh from inside the Memory-Suite bundle)"
   DEST="$WORKSPACE/scripts/semantic"
   mkdir -p "$DEST"
-  # copy every stack file (code only — there are no data files in _semantic-stack/)
+  # copy every stack entry (code only — no user data in _semantic-stack/)
   for f in "$STACK_SRC"/*; do
     bn="$(basename "$f")"
-    cp -f "$f" "$DEST/$bn"
+    # dirs (e.g. eval/) need a recursive copy; rm-first keeps re-runs idempotent (no nested eval/eval)
+    if [ -d "$f" ]; then rm -rf "$DEST/$bn"; cp -Rf "$f" "$DEST/$bn"; else cp -f "$f" "$DEST/$bn"; fi
   done
   # executables: launchers + indexers
   chmod +x "$DEST/msem" "$DEST/mdeep" 2>/dev/null || true
@@ -496,7 +497,11 @@ if [ "$WITH_CRON" = true ]; then
     # --- group 1: daily reindex (unchanged behavior) -------------------------------------------------
     # 03:30 local — curated incremental reindex;  04:00 local — transcript incremental reindex.
     CRON_CURATED="30 3 * * * cd $SEM && $NODE_BIN index.mjs --incremental >> $WORKSPACE/memory/.semantic/reindex.log 2>&1"
-    CRON_TRANSCRIPTS="0 4 * * * cd $SEM && $NODE_BIN index-transcripts.mjs --incremental --src all --max 150 >> $WORKSPACE/memory/.semantic/transcripts/reindex.log 2>&1"
+    # transcript sources are platform-specific: OpenClaw indexes its bundled threads/archives/engineer dirs
+    # (--src all); Claude Code indexes the standalone projects root (--cc-dir ~/.claude/projects) — without
+    # this, a claude-code install's transcript cron matches nothing and silently indexes zero CC sessions.
+    if [ "$TARGET" = "claude-code" ]; then TX_ARGS="--cc-dir \"$HOME/.claude/projects\""; else TX_ARGS="--src all"; fi
+    CRON_TRANSCRIPTS="0 4 * * * cd $SEM && $NODE_BIN index-transcripts.mjs --incremental $TX_ARGS --max 150 >> $WORKSPACE/memory/.semantic/transcripts/reindex.log 2>&1"
     TAG_REINDEX="# memory-suite-reindex"
 
     # --- group 2: Layer-3 autonomous-maintenance loop (deterministic + provider-free by default) ------

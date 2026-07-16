@@ -1,5 +1,7 @@
 // Semantic memory — shared helpers (arctic-embed via node-llama-cpp)
 import { getLlama } from "node-llama-cpp";
+import net from "node:net";
+import crypto from "node:crypto";
 // WS + writeJsonAtomic + fs/path live in the model-free store.mjs so decay.mjs (and its tests) can load
 // without pulling node-llama-cpp; re-exported here so index/hybrid/deep keep importing them from common.mjs.
 import { WS, writeJsonAtomic, cosine, fs, path } from "./store.mjs";
@@ -10,19 +12,62 @@ export const INDEX_PATH = `${WS}/memory/.semantic/index.json`;
 // arctic-embed is asymmetric: queries get this prefix, documents do not. v2.0 uses "query: ".
 export const QUERY_PREFIX = "query: ";
 
-let _model = null, _ctx = null;
+let _model = null, _ctx = null, _ctxPromise = null;
 export async function getCtx() {
   if (_ctx) return _ctx;
-  const llama = await getLlama();
-  _model = await llama.loadModel({ modelPath: MODEL });
-  _ctx = await _model.createEmbeddingContext();
-  return _ctx;
+  // Guard concurrent callers (e.g. the daemon's warmup racing its first request) so the ~1.1GB model
+  // loads exactly ONCE per process, not twice.
+  if (!_ctxPromise) _ctxPromise = (async () => {
+    const llama = await getLlama();
+    _model = await llama.loadModel({ modelPath: MODEL });
+    _ctx = await _model.createEmbeddingContext();
+    return _ctx;
+  })();
+  return _ctxPromise;
 }
-export async function dispose() { if (_model) await _model.dispose(); }
-export async function embed(text) {
+export async function dispose() { if (_model) { await _model.dispose(); } _model = null; _ctx = null; _ctxPromise = null; }
+
+// In-process embed: cold-loads the model on first call, then reuses it (getCtx caches it). A single
+// short-lived msem/mdeep process uses this when no daemon runs — and the daemon itself calls this to serve
+// requests. Kept as the RAW path (never tries the daemon) so the daemon can't recurse into itself.
+export async function embedInProcess(text) {
   const ctx = await getCtx();
   // arctic-embed context window is 512 tokens; cap chars to stay safely under it.
   return Array.from((await ctx.getEmbeddingFor(text.slice(0, 1200))).vector);
+}
+
+// Optional persistent embedding daemon (embed-daemon.mjs). If it's up (socket present + answering), route
+// the embed there so the ~1.1GB model is loaded ONCE and shared across all concurrent msem/mdeep/reconcile/
+// save calls instead of every process cold-starting it. Any miss falls back to in-process, so behaviour is
+// unchanged when no daemon runs. Force off with MEM_EMBED_DAEMON=off.
+// Unix socket paths are capped at ~104 bytes on macOS/BSD, so we do NOT nest the socket under a
+// (possibly deep) workspace path — a too-long path silently truncates and breaks discovery. Use a short,
+// deterministic /tmp path keyed by a hash of the workspace, so each workspace gets its own daemon and the
+// client + daemon + memd all derive the identical path.
+export const EMBED_SOCK = process.env.MEM_EMBED_SOCK || `/tmp/memsuite-embed-${crypto.createHash("sha1").update(WS).digest("hex").slice(0, 12)}.sock`;
+function embedViaDaemon(text) {
+  return new Promise((resolve) => {
+    if (process.env.MEM_EMBED_DAEMON === "off") return resolve(null);
+    // Just try to connect; a missing/stale socket errors instantly (ENOENT/ECONNREFUSED) → fall back to
+    // in-process. (No existsSync stat — it disagrees with connect on truncated over-long paths.)
+    const sock = net.connect(EMBED_SOCK);
+    let done = false, buf = "", to;
+    const finish = (v) => { if (done) return; done = true; clearTimeout(to); try { sock.destroy(); } catch {} resolve(v); };
+    to = setTimeout(() => finish(null), Number(process.env.MEM_EMBED_TIMEOUT_MS || 30000));
+    sock.on("connect", () => { try { sock.write(JSON.stringify({ text }) + "\n"); } catch { finish(null); } });
+    sock.on("data", (d) => {
+      buf += d; const nl = buf.indexOf("\n"); if (nl < 0) return;
+      try { const r = JSON.parse(buf.slice(0, nl)); finish(Array.isArray(r.vector) ? r.vector : null); } catch { finish(null); }
+    });
+    sock.on("error", () => finish(null));
+    sock.on("close", () => finish(null));
+  });
+}
+// Public embed: daemon-first, in-process fallback. All model-side scripts (hybrid/deep/index/reconcile) use this.
+export async function embed(text) {
+  const viaDaemon = await embedViaDaemon(text);
+  if (viaDaemon) return viaDaemon;
+  return embedInProcess(text);
 }
 // cosine now lives in store.mjs (model-free) and is re-exported above, so pure code (reconcile.mjs)
 // can share the exact same implementation without importing node-llama-cpp.

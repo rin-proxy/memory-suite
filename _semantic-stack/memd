@@ -1,0 +1,37 @@
+#!/bin/bash
+# memd — control the optional persistent embedding daemon (embed-daemon.mjs): start|stop|status|restart.
+# Keeps the ~1.1GB arctic-embed model warm so concurrent msem/mdeep/save/reconcile calls skip the cold
+# start. Entirely optional: without it, memory recall still works (cold-load per call), just slower under
+# concurrency. Portable — resolves relative to this launcher; honors $OPENCLAW_WORKSPACE.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -n "${OPENCLAW_WORKSPACE:-}" ] && [ -f "$OPENCLAW_WORKSPACE/scripts/semantic/embed-daemon.mjs" ]; then
+  DIR="$OPENCLAW_WORKSPACE/scripts/semantic"
+else
+  DIR="$SELF_DIR"
+fi
+# Authoritative workspace — same resolution as store.mjs (model-free, no node-llama-cpp load).
+WS=$(node -e 'import(process.argv[1]).then(m=>process.stdout.write(m.WS)).catch(()=>process.exit(1))' "$DIR/store.mjs" 2>/dev/null) || WS="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
+# Socket lives in /tmp (short path — Unix sockets cap at ~104 bytes), keyed by a hash of WS so it matches
+# common.mjs's EMBED_SOCK exactly. sha1 is portable: GNU 'sha1sum' or BSD/macOS 'shasum -a 1'.
+sha1_12() { if command -v sha1sum >/dev/null 2>&1; then sha1sum; else shasum -a 1; fi | awk '{print $1}' | cut -c1-12; }
+SOCK="${MEM_EMBED_SOCK:-/tmp/memsuite-embed-$(printf '%s' "$WS" | sha1_12).sock}"
+PIDF="$WS/memory/.semantic/embed.pid"
+LOG="$WS/memory/.semantic/embed.log"
+
+alive() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; }
+
+case "${1:-status}" in
+  start)
+    if alive; then echo "embed-daemon: already running (pid $(cat "$PIDF"))"; exit 0; fi
+    mkdir -p "$WS/memory/.semantic" 2>/dev/null || true
+    nohup node "$DIR/embed-daemon.mjs" >>"$LOG" 2>&1 &
+    for _ in 1 2 3 4 5 6 7 8 9 10; do sleep 1; if alive || [ -S "$SOCK" ]; then break; fi; done
+    if alive || [ -S "$SOCK" ]; then echo "embed-daemon: started (pid $(cat "$PIDF" 2>/dev/null), warming model)"; else echo "embed-daemon: failed to start (see $LOG)" >&2; exit 1; fi ;;
+  stop)
+    if alive; then kill "$(cat "$PIDF")" 2>/dev/null && echo "embed-daemon: stopped"; else echo "embed-daemon: not running"; fi
+    rm -f "$SOCK" "$PIDF" 2>/dev/null || true ;;
+  restart) "$0" stop; sleep 1; exec "$0" start ;;
+  status)
+    if alive; then echo "embed-daemon: running (pid $(cat "$PIDF"), sock $SOCK)"; else echo "embed-daemon: not running"; fi ;;
+  *) echo "usage: memd start|stop|status|restart" >&2; exit 1 ;;
+esac

@@ -60,6 +60,15 @@ done
 
 WS="${WS_ARG:-${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}}"
 
+# --- best-effort secret redaction (provider-free) BEFORE hashing/title/store --------------------------
+# Closes the gap where redact() ran on raw transcripts only, not curated saves. Non-blocking: if node /
+# redact.mjs is unavailable we write as before. Runs before the hash so an identical secret redacts stably.
+REDACT_SCRIPT="$WS/scripts/semantic/redact.mjs"
+if command -v node >/dev/null 2>&1 && [ -f "$REDACT_SCRIPT" ]; then
+  REDACTED=$(printf '%s' "$TEXT" | node "$REDACT_SCRIPT" 2>/dev/null || true)
+  [ -n "$REDACTED" ] && TEXT="$REDACTED"
+fi
+
 # --- type → numbered store dir (bash-3.2: case, not an associative array) ------------------------------
 case "$TYPE" in
   preference)            STORE="00-core" ;;
@@ -130,7 +139,7 @@ fi
   printf '%s\n' "$TEXT"
   echo
   echo "_Saved $DATE · source: save-by-default (Layer 1 · real-time · agent-driven)_"
-} > "$FILE"
+} > "$FILE.tmp.$$" && mv -f "$FILE.tmp.$$" "$FILE"
 
 echo "✓ saved → ${FILE/$WS\//}  (type:$TYPE, store:$STORE, source:save-by-default)"
 echo "  → recallable via  msem \"<query>\"  after the next semantic reindex (15-min cron)."

@@ -1,0 +1,7 @@
+{
+  "name": "memory-suite",
+  "description": "Local-first persistent memory for Claude: cognitive recall, morning briefing, connection synthesis, proactive partner, smart distill.",
+  "version": "1.9.0",
+  "author": "Rin",
+  "license": "Commercial (see LICENSE-COMMERCIAL.md)"
+}

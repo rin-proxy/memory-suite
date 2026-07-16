@@ -23,6 +23,12 @@ WS="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 DIR="$WS/memory/02-semantic/distilled"        # under memory/ → semantic-indexed → recallable
 mkdir -p "$DIR"
 CONTENT=$(cat); [[ -z "$CONTENT" ]] && { echo "Error: pipe in distilled content" >&2; exit 1; }
+# --- best-effort secret redaction (provider-free) before hashing/storing (mirrors save.sh) ------------
+REDACT_SCRIPT="$WS/scripts/semantic/redact.mjs"
+if command -v node >/dev/null 2>&1 && [[ -f "$REDACT_SCRIPT" ]]; then
+  REDACTED=$(printf '%s' "$CONTENT" | node "$REDACT_SCRIPT" 2>/dev/null || true)
+  [[ -n "$REDACTED" ]] && CONTENT="$REDACTED"
+fi
 SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
 HASH=$( { echo "$TITLE"; echo "$SOURCE"; echo "$CONTENT"; } | sha256 | head -c 8 )
 DATE=$(date -u +%Y-%m-%d)
@@ -72,7 +78,7 @@ fi
   echo "$CONTENT"
   echo
   echo "_Distilled $DATE from ${SOURCE:-source} · provenance sha256-${HASH}_"
-} > "$FILE"
+} > "$FILE.tmp.$$" && mv -f "$FILE.tmp.$$" "$FILE"
 echo "✓ stored → ${FILE/$WS\//}  (type:distilled, provenance sha256-$HASH)"
 
 if $REINDEX; then

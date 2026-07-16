@@ -64,7 +64,8 @@ done
 
 # ── 2) shared semantic stack: key scripts present ─────────────────────────────
 for f in index.mjs index-transcripts.mjs hybrid.mjs deep.mjs store.mjs common.mjs \
-         decay.mjs rerank.mjs vecstore.mjs surface.mjs transcripts.mjs redact.mjs msem mdeep; do
+         decay.mjs rerank.mjs vecstore.mjs surface.mjs transcripts.mjs redact.mjs \
+         embed-daemon.mjs msem mdeep memd; do
   if [ -e "$STACK/$f" ]; then pass "stack: _semantic-stack/$f"; else fail "stack: missing _semantic-stack/$f"; fi
 done
 

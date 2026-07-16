@@ -3,6 +3,30 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.9.0 (2026-07-16)
+
+Native Claude Code plugin support + a persistent embedding daemon for multi-agent recall, plus two
+durability/privacy fixes to the curated store.
+
+- **feat (plugin adapter):** memory-suite now loads natively via Claude Code's `--plugin-dir` — added
+  `.claude-plugin/plugin.json` + a `skills/` directory (symlinks to the 5 skill folders). Previously
+  `--plugin-dir <memory-suite>` recognised the plugin but loaded **0 skills** (the scanner only looks
+  under `skills/`). Purely additive: `install.sh` / OpenClaw paths and the personal-scope install are
+  unchanged.
+- **feat (persistent embedding daemon):** new `embed-daemon.mjs` + `memd` (start|stop|status|restart)
+  keep the ~1.1GB arctic-embed model loaded ONCE and serve embeds over a Unix socket, so concurrent
+  `msem`/`mdeep`/`save`/`reconcile` calls skip the per-call cold start. Measured ~2800 ms cold →
+  ~30 ms warm, shared across processes — built for the "many agents share one memory" case. Fully
+  optional with auto-fallback: with no daemon, `embed()` cold-loads exactly as before. `getCtx()` now
+  de-dups concurrent model loads. The socket lives in `/tmp` (hashed by workspace) to stay under the
+  ~104-byte Unix-socket path limit.
+- **fix (privacy):** the curated save paths (`save.sh`, `distill-store.sh`) now run the same `redact()`
+  secret-stripping the transcript path already used — closes the gap where agent-saved notes could
+  persist credentials. Best-effort / non-blocking (writes normally if node / redact is unavailable).
+- **fix (durability):** `save.sh` + `distill-store.sh` now write notes atomically (tmp-then-rename),
+  matching `writeJsonAtomic` — removes the interleaved-write risk when two agents save byte-identical
+  content simultaneously.
+
 ## 1.8.1 (2026-07-04)
 
 Install fixes surfaced by re-running `install.sh` end-to-end against a Claude Code target.

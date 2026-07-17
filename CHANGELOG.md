@@ -3,6 +3,16 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.12.0 (2026-07-17)
+- **NEW — the Memory Flywheel (`mlearn flywheel` + `mlearn phrased <id>` + `FLYWHEEL.md`).** One command
+  drives the full **learn → phrase → store → act** loop and tells the agent exactly what to do next:
+  it rebuilds the graph (deterministic, no model), then surfaces the promoted patterns not yet written
+  up — with their source notes and a clear task — so the agent writes one grounded insight per cluster
+  to `memory/05-connections/` (connection-synthesis), marks it done (`mlearn phrased`), and runs
+  proactive-partner on the fresh insights. Each written connection becomes a note the NEXT rebuild learns
+  from — the wheel compounds. Insights carry a `phrased` flag so nothing resurfaces twice.
+- `FLYWHEEL.md` documents the loop + the one rule (honesty over volume: phrase the real link or say "unclear").
+
 ## 1.11.0 (2026-07-16)
 - **`mlearn sync`** — rebuild + inject the promoted "Learned patterns" block into `MEMORY.md` between
   managed markers (idempotent). MEMORY.md is injected every turn, so learned patterns now actually

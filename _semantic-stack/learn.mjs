@@ -202,7 +202,7 @@ export function promoteInsights(prevInsights, candidates, nowMs, opts = {}) {
       p.runs = (p.runs || 1) + 1; p.lastMs = nowMs; p.status = p.runs >= 2 ? "promoted" : "candidate";
     } else {
       prev.push({ id: `ins-${(prev.length + 1)}-${cand.members[0]}`, members: cand.members, strength: cand.strength,
-        size: cand.size, runs: 1, firstMs: nowMs, lastMs: nowMs, status: "candidate", text: cand.text != null ? cand.text : null });
+        size: cand.size, runs: 1, firstMs: nowMs, lastMs: nowMs, status: "candidate", text: cand.text != null ? cand.text : null, phrased: false });
     }
   }
   prev.sort((x, y) => (y.runs - x.runs) || (y.strength - x.strength));
@@ -261,6 +261,8 @@ export function themeLabel(memberIds, textOf, k = 3) {
 // node learn.mjs block   [--ws PATH]   emit the compact MEMORY.md insight block
 // node learn.mjs sync    [--ws PATH]   rebuild + inject the block into MEMORY.md (managed markers) — every-turn behavior
 // node learn.mjs phrase  [--ws PATH]   emit promoted clusters as material for an LLM to phrase (connection-synthesis)
+// node learn.mjs flywheel[--ws PATH]   drive the full learn→phrase→act loop; tells the agent exactly what to do next
+// node learn.mjs phrased <id> [--ws]   mark an insight as written-up so the flywheel stops re-surfacing it
 // Reads vectors already in the index → rebuild/list/block/sync NEED NO EMBEDDING MODEL (run during a provider outage).
 function readJson(p, dflt) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return dflt; } }
 function writeJson(p, obj) { fs.mkdirSync(p.replace(/\/[^/]+$/, ""), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 0)); }
@@ -382,7 +384,48 @@ function cmdPhrase(ws) {
   return 0;
 }
 
-function parse(argv) { const o = { cmd: argv[0] || "rebuild", ws: null }; for (let i = 1; i < argv.length; i++) { if (argv[i] === "--ws") o.ws = argv[++i]; } return o; }
+// ============================== THE FLYWHEEL ==============================
+// flywheel: one command that drives the whole learn→phrase→store→act loop and tells the agent EXACTLY
+// what to do next. It is the orchestration that makes the memory skills compound instead of sitting idle:
+//   1. LEARN   — rebuild the graph + promote durable patterns (deterministic, no model).
+//   2. PHRASE  — surface promoted insights NOT yet written up, with their source notes + a clear task.
+//   3. (agent) — writes one grounded insight per cluster to memory/05-connections/ (connection-synthesis),
+//                then calls `mlearn phrased <id>` to close it so it is never re-surfaced.
+//   4. ACT     — points the agent at proactive-partner to turn fresh insights into proposed actions.
+// The written connections become new notes → the NEXT rebuild learns from them too → the wheel turns.
+function cmdFlywheel(ws, nowMs) {
+  cmdRebuild(ws, nowMs);
+  const P = paths(ws); const store = readJson(P.insights, { insights: [] });
+  const index = readJson(P.index, null); const text = index ? chunksFromIndex(index).text : new Map();
+  const promoted = store.insights.filter((x) => x.status === "promoted");
+  const fresh = promoted.filter((x) => !x.phrased);
+  process.stdout.write(`\n🎡 FLYWHEEL — ${promoted.length} durable pattern(s) learned, ${fresh.length} not yet written up.\n`);
+  if (!fresh.length) {
+    process.stdout.write("   Nothing new to phrase. Loop is caught up. (Run proactive-partner if you want fresh proposals.)\n");
+    return 0;
+  }
+  process.stdout.write("\n## STEP 2 — PHRASE these into insights (write each to memory/05-connections/, then run `mlearn phrased <id>`):\n");
+  for (const ins of fresh.slice(0, 8)) {
+    process.stdout.write(`\n• id: ${ins.id}   theme: ${ins.text || "(unnamed)"}   (${ins.size} notes)\n`);
+    for (const m of ins.members.slice(0, 6)) { const t = (text.get(m) || "").replace(/\s+/g, " ").slice(0, 100); process.stdout.write(`    - ${m}${t ? ": " + t : ""}\n`); }
+  }
+  process.stdout.write("\n   Rule (connection-synthesis): write ONE grounded sentence per cluster — the real link, cited by note.");
+  process.stdout.write("\n   Say 'unclear' rather than force a pattern. Then: mlearn phrased <id>\n");
+  process.stdout.write("\n## STEP 4 — ACT: after writing them, run proactive-partner to turn fresh insights into proposals.\n");
+  return 0;
+}
+
+function cmdPhrased(ws, id) {
+  const P = paths(ws); const store = readJson(P.insights, { insights: [] });
+  const ins = store.insights.find((x) => x.id === id);
+  if (!ins) { process.stderr.write(`# learn: no insight with id ${id}\n`); return 1; }
+  ins.phrased = true; ins.phrasedMs = Number(process.env.LEARN_NOW_MS) || 0 || ins.lastMs;
+  writeJson(P.insights, store);
+  process.stdout.write(`✓ marked ${id} phrased — it won't resurface in the flywheel.\n`);
+  return 0;
+}
+
+function parse(argv) { const o = { cmd: argv[0] || "rebuild", ws: null, id: null }; for (let i = 1; i < argv.length; i++) { if (argv[i] === "--ws") o.ws = argv[++i]; else if (!argv[i].startsWith("--") && o.cmd !== argv[i] && o.id == null) o.id = argv[i]; } return o; }
 
 function main(argv) {
   const o = parse(argv);
@@ -393,7 +436,9 @@ function main(argv) {
   if (o.cmd === "block") return cmdBlock(ws);
   if (o.cmd === "sync") return cmdSync(ws, nowMs);
   if (o.cmd === "phrase") return cmdPhrase(ws);
-  process.stderr.write("Usage: node learn.mjs [rebuild|list|block|sync|phrase] [--ws PATH]\n"); return 2;
+  if (o.cmd === "flywheel") return cmdFlywheel(ws, nowMs);
+  if (o.cmd === "phrased") { if (!o.id) { process.stderr.write("Usage: mlearn phrased <insight-id>\n"); return 2; } return cmdPhrased(ws, o.id); }
+  process.stderr.write("Usage: node learn.mjs [rebuild|list|block|sync|phrase|flywheel|phrased <id>] [--ws PATH]\n"); return 2;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

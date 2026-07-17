@@ -3,6 +3,26 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.10.0 (2026-07-16)
+- **NEW — provider-free LEARNING layer (`_semantic-stack/learn.mjs` + `mlearn`).** Memory that gets
+  sharper over time, with NO extra LLM/tokens, NO Docker, NO network — the machinery runs on the
+  vectors already in the index, so it keeps working during a provider outage.
+  - **Hebbian recurrence** — persists the link graph across rebuilds; connections that keep recurring
+    are reinforced (a link seen once is noise; a link that recurs is a pattern).
+  - **Bounded dense clustering** — extracts small, mutually-connected NOTE clusters (not naive
+    connected-components, which collapses a dense memory into one meaningless giant blob).
+  - **Deterministic promotion gate** — a cluster promotes only on convergence (size), durability
+    (edge recurrence ≥ N rebuilds), density, and aggregate strength; a candidate becomes a *promoted*
+    insight only after qualifying across ≥2 runs.
+  - **Provider-free theme labels** — each insight gets a short human theme from the words its member
+    notes share (`audit · fail2ban · firewall`), so `mlearn block` yields an injectable
+    "Learned patterns" section for MEMORY.md — behavior that compounds, no model required.
+  - **Contradiction flags** — a lightweight lexical review signal (deep contradiction is left to an
+    optional LLM pass). 20 pure unit tests; wired into `check.sh`.
+  - Note-level graph (mean-pooled per file) ⇒ insights span distinct notes AND the O(n²) build is
+    ~20× smaller (≈300 ms on a 150-note memory).
+- `check.sh` now also runs `test-links` and `test-learn` (previously `test-links` was unwired).
+
 ## 1.9.0 (2026-07-16)
 
 Native Claude Code plugin support + a persistent embedding daemon for multi-agent recall, plus two

@@ -1,0 +1,15 @@
+#!/bin/bash
+# Provider-free memory learning: build the recurrence graph, cluster it, promote durable patterns.
+# Usage: ./mlearn [rebuild|list|block] [--ws PATH]   (default: rebuild)
+#   rebuild : read the semantic index's vectors → reinforce graph → cluster → promote insights (NO model)
+#   list    : show learned insights (promoted + candidates) with member notes
+#   block   : emit the compact "Learned patterns" block for MEMORY.md injection (every-turn behavior)
+# Portable: resolves learn.mjs relative to this launcher; honors $OPENCLAW_WORKSPACE. NEEDS NO embedding
+# model — it reads vectors already in the index, so it keeps working during a provider/model outage.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -n "$OPENCLAW_WORKSPACE" ] && [ -f "$OPENCLAW_WORKSPACE/scripts/semantic/learn.mjs" ]; then
+  TARGET="$OPENCLAW_WORKSPACE/scripts/semantic/learn.mjs"
+else
+  TARGET="$SELF_DIR/learn.mjs"
+fi
+exec node "$TARGET" "$@"

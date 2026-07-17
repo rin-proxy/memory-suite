@@ -41,6 +41,14 @@ a local embedding model (arctic-embed via `node-llama-cpp`) plus the `msem` (hyb
 (total-recall) search launchers. That's why they ship together: **one install, one engine, one
 coherent system** — no cloud call, language-agnostic recall, survives provider outages.
 
+**Memory that gets sharper over time — provider-free (`mlearn`).** Beyond store + recall, the engine
+*learns*: `mlearn rebuild` reinforces the connections that keep recurring across your notes (Hebbian),
+clusters the durable ones, and **promotes** stable patterns into themed insights — all from the vectors
+already in the index, so it needs **no LLM, no tokens, no Docker, and keeps working during a provider
+outage** (unlike LLM-pipeline memory systems that go dark when the model is down). `mlearn block` emits
+an injectable "Learned patterns" section for `MEMORY.md`, so the patterns influence behavior every turn.
+Run `mlearn rebuild` on your reindex cron; an optional LLM pass can later phrase an insight into prose.
+
 ## Layout
 
 ```

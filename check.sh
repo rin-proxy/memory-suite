@@ -65,13 +65,13 @@ done
 # ── 2) shared semantic stack: key scripts present ─────────────────────────────
 for f in index.mjs index-transcripts.mjs hybrid.mjs deep.mjs store.mjs common.mjs \
          decay.mjs rerank.mjs vecstore.mjs surface.mjs transcripts.mjs redact.mjs \
-         embed-daemon.mjs msem mdeep memd; do
+         links.mjs learn.mjs embed-daemon.mjs msem mdeep memd mlearn; do
   if [ -e "$STACK/$f" ]; then pass "stack: _semantic-stack/$f"; else fail "stack: missing _semantic-stack/$f"; fi
 done
 
 # ── 3) run the pure unit tests (no model / no network / no node_modules) ──────
 if command -v node >/dev/null 2>&1; then
-  for t in test-transcripts test-decay test-surface test-rerank test-vecstore; do
+  for t in test-transcripts test-decay test-surface test-rerank test-vecstore test-links test-learn; do
     if [ ! -f "$STACK/$t.mjs" ]; then fail "unit tests: $t.mjs missing"; continue; fi
     out="$( cd "$STACK" && node "$t.mjs" 2>&1 )"; rc=$?
     if [ "$rc" -eq 0 ]; then

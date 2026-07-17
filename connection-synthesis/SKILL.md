@@ -47,7 +47,13 @@ between them.** Recall finds what you ask for. Synthesis finds what you didn't k
 ./scripts/find-connections.sh "<seed note or theme>" 12
 # → prints cross-domain candidate clusters + a synthesis prompt.
 # Then YOU write the real insights to memory/05-connections/ (the tool surfaces; you synthesize).
+
+# OR phrase the patterns the engine ALREADY learned on its own (provider-free graph → promoted clusters):
+./scripts/semantic/mlearn phrase        # → each auto-promoted cluster + its notes, ready to turn into ONE sentence
 ```
+The learning layer (`mlearn`) discovers durable patterns deterministically over time (no model); this
+skill is the **optional LLM step** that phrases a promoted cluster into a polished insight and writes it
+to `memory/05-connections/`. Ground every sentence in the member notes; say "unclear" rather than force one.
 
 ## 💡 Why insight lives BETWEEN notes
 

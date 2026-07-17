@@ -3,6 +3,17 @@
 All notable changes to the packaged **bundle**. The bundle version (`suite.json`) moves
 independently of the individual skills' own `SKILL.md` versions.
 
+## 1.11.0 (2026-07-16)
+- **`mlearn sync`** — rebuild + inject the promoted "Learned patterns" block into `MEMORY.md` between
+  managed markers (idempotent). MEMORY.md is injected every turn, so learned patterns now actually
+  **influence behavior** (behavioral promotion) — wire it to your reindex cron. Still model-free.
+- **`mlearn phrase`** — emit each promoted cluster + its member notes as material for the optional LLM
+  step; `connection-synthesis` now documents consuming it to phrase a pattern into a written insight.
+- Repositioned the pitch around the real, now-shipping edge: provider-free learning that keeps working
+  in an outage (vs LLM/Docker-pipeline memory systems that burn tokens and go dark).
+- Confirmed decay is fully wired in the engine (`recordAccess` persists on every `msem`/`mdeep` query;
+  the re-rank reads it) — no change needed in the product; older installs predating it just need updating.
+
 ## 1.10.0 (2026-07-16)
 - **NEW — provider-free LEARNING layer (`_semantic-stack/learn.mjs` + `mlearn`).** Memory that gets
   sharper over time, with NO extra LLM/tokens, NO Docker, NO network — the machinery runs on the

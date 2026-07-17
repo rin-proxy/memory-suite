@@ -258,8 +258,10 @@ export function themeLabel(memberIds, textOf, k = 3) {
 // ------------------------------------- CLI ---------------------------------------------------------
 // node learn.mjs rebuild [--ws PATH]   read index.json vectors → build+reinforce graph → cluster → promote
 // node learn.mjs list    [--ws PATH]   print promoted insights (+ candidates)
-// node learn.mjs block   [--ws PATH]   emit the compact MEMORY.md insight block (for every-turn injection)
-// Reads vectors already in the index → NEEDS NO EMBEDDING MODEL (runs during a provider outage).
+// node learn.mjs block   [--ws PATH]   emit the compact MEMORY.md insight block
+// node learn.mjs sync    [--ws PATH]   rebuild + inject the block into MEMORY.md (managed markers) — every-turn behavior
+// node learn.mjs phrase  [--ws PATH]   emit promoted clusters as material for an LLM to phrase (connection-synthesis)
+// Reads vectors already in the index → rebuild/list/block/sync NEED NO EMBEDDING MODEL (run during a provider outage).
 function readJson(p, dflt) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return dflt; } }
 function writeJson(p, obj) { fs.mkdirSync(p.replace(/\/[^/]+$/, ""), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 0)); }
 
@@ -341,6 +343,45 @@ function cmdBlock(ws) {
   return 0;
 }
 
+// sync: rebuild, then inject the promoted "Learned patterns" block into MEMORY.md between managed
+// markers (idempotent — replaces the fenced region, appends it if absent). This is the behavioral-
+// promotion step: MEMORY.md is injected every turn, so learned patterns start influencing behavior.
+function cmdSync(ws, nowMs) {
+  cmdRebuild(ws, nowMs);
+  const BEGIN = "<!-- BEGIN:learned-patterns (managed by memory-suite mlearn — do not edit) -->";
+  const END = "<!-- END:learned-patterns -->";
+  let block = "";
+  { const chunks = []; const orig = process.stdout.write.bind(process.stdout); process.stdout.write = (s) => { chunks.push(s); return true; }; try { cmdBlock(ws); } finally { process.stdout.write = orig; } block = chunks.join(""); }
+  const mem = `${ws}/MEMORY.md`;
+  let cur = ""; try { cur = fs.readFileSync(mem, "utf8"); } catch {}
+  const managed = block.trim() ? `${BEGIN}\n${block.trim()}\n${END}` : `${BEGIN}\n${END}`;
+  let next;
+  if (cur.includes(BEGIN) && cur.includes(END)) {
+    next = cur.replace(new RegExp(`${BEGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), managed);
+  } else {
+    next = (cur.trimEnd() ? cur.trimEnd() + "\n\n" : "") + managed + "\n";
+  }
+  try { fs.writeFileSync(mem, next); process.stdout.write(`🧠 learn: synced learned-patterns block → ${mem}\n`); } catch (e) { process.stderr.write(`# learn: could not write MEMORY.md: ${e}\n`); return 1; }
+  return 0;
+}
+
+// phrase: emit each promoted insight's theme + member note snippets as material for an LLM (via the
+// connection-synthesis skill) to turn into ONE polished sentence. Provider-free itself — it only
+// PREPARES the material; the optional model step happens in the agent, not here.
+function cmdPhrase(ws) {
+  const P = paths(ws); const store = readJson(P.insights, { insights: [] });
+  const index = readJson(P.index, null); const text = index ? chunksFromIndex(index).text : new Map();
+  const promoted = store.insights.filter((x) => x.status === "promoted");
+  if (!promoted.length) { process.stderr.write("# learn: no promoted insights to phrase yet\n"); return 0; }
+  process.stdout.write("# Phrase these learned patterns into one sentence each (ground in the notes; say 'unclear' if forced):\n\n");
+  for (const ins of promoted.slice(0, 12)) {
+    process.stdout.write(`## theme: ${ins.text || "(unnamed)"}  (${ins.size} notes, seen ${ins.runs}×)\n`);
+    for (const m of ins.members.slice(0, 8)) { const t = (text.get(m) || "").replace(/\s+/g, " ").slice(0, 120); process.stdout.write(`- ${m}${t ? ": " + t : ""}\n`); }
+    process.stdout.write("\n");
+  }
+  return 0;
+}
+
 function parse(argv) { const o = { cmd: argv[0] || "rebuild", ws: null }; for (let i = 1; i < argv.length; i++) { if (argv[i] === "--ws") o.ws = argv[++i]; } return o; }
 
 function main(argv) {
@@ -350,7 +391,9 @@ function main(argv) {
   if (o.cmd === "rebuild") return cmdRebuild(ws, nowMs);
   if (o.cmd === "list") return cmdList(ws);
   if (o.cmd === "block") return cmdBlock(ws);
-  process.stderr.write("Usage: node learn.mjs [rebuild|list|block] [--ws PATH]\n"); return 2;
+  if (o.cmd === "sync") return cmdSync(ws, nowMs);
+  if (o.cmd === "phrase") return cmdPhrase(ws);
+  process.stderr.write("Usage: node learn.mjs [rebuild|list|block|sync|phrase] [--ws PATH]\n"); return 2;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

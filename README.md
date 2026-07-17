@@ -13,9 +13,9 @@ Your AI agent forgets everything between sessions — so you keep re-explaining 
 - **Remembers what matters** — decisions, preferences, facts — and saves the important things as they come up.
 - **Finds them again instantly** — fast local search over everything it has stored, plus your raw conversation history, so nothing is truly lost (you can recall a detail even after the context window was trimmed, or "compacted").
 - **Stays private** — the whole thing runs on your own machine with a local model. No cloud, nothing leaves your computer, works offline.
-- **Gets better over time** — it de-duplicates near-identical notes, ranks what you actually use, resurfaces things you'd forgotten, and connects ideas across topics.
+- **Gets better over time — and actually *learns*** — it de-duplicates near-identical notes, ranks what you actually use, resurfaces things you'd forgotten, connects ideas across topics, and **discovers the durable patterns across everything you've told it** (recurring themes it promotes into always-present knowledge). It does this **on your machine with zero extra AI cost** — no daily model bill, no Docker, no vector database, and it keeps learning even when your AI provider is down. (Learning memory systems that run an LLM over a Docker/vector stack burn tokens continuously and go dark in an outage; this doesn't.)
 
-In one line: long-term memory + instant recall for your agent — so it stops forgetting and you stop repeating yourself.
+In one line: long-term memory + instant recall + provider-free learning for your agent — so it stops forgetting, gets sharper on its own, and you stop repeating yourself.
 
 ## Why install it
 

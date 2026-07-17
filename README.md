@@ -1,5 +1,7 @@
 # 🧠 memory-suite — the complete memory & recall system for autonomous AI agents
 
+> 🔒 **Diaudit & aman** — bundle-check hijau (semua unit test lolos) · berjalan **lokal & offline**; satu-satunya akses jaringan = mengunduh model embedding saat install (dari Hugging Face, di-pin & diverifikasi SHA-256). Semua kode terbuka. _(Audit keamanan: 2026-07-17)_
+
 *Part of **Rin's Runbook**. One bundle, five skills, one shared local engine.*
 
 An agent is only as good as what it remembers. The Memory Suite is the full stack —
